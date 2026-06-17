@@ -4,33 +4,15 @@
   "main": "worker.js",
   "compatibility_date": "2026-06-17",
   
-  // एआई बाइंडिंग
   "ai": {
     "binding": "AI"
   },
   
-  // डेटाबेस बाइंडिंग
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "pocket-empire-db",
       "database_id": "यहाँ_अपने_D1_की_असली_ID_डालो"
-    }
-  ],
-  
-  // क्यूज़ (Queues) का बिल्कुल सही सिंटैक्स जो क्लाउडफ्लेयर बिल्ड पास करेगा ✅
-  "queues": [
-    {
-      "binding": "PE_COLLECTOR",
-      "queue": "pe-collector"
-    },
-    {
-      "binding": "PE_PROCESSOR",
-      "queue": "pe-processor"
-    },
-    {
-      "binding": "PE_PUBLISHER",
-      "queue": "pe-publisher"
     }
   ]
 }
