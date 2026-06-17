@@ -5,7 +5,7 @@ compatibility_date = "2024-01-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "pocket-empire-db"
-database_id = "TUMHARA_D1_ID"
+database_id = "ab478d5b-d012-44e1-a1ca-71af8b202f9e"
 
 [[queues.consumers]]
 queue = "pe-processor"
