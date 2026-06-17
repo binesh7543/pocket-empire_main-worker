@@ -1,0 +1,20 @@
+name = "pocket-empire"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pocket-empire-db"
+database_id = "TUMHARA_D1_ID"
+
+[[kv_namespaces]]
+binding = "PE_ADMIN_KV"
+id = "TUMHARA_KV_ID"
+
+[[queues.consumers]]
+queue = "pe-processor"
+max_batch_size = 10
+
+[[queues.producers]]
+binding = "PE_PROCESSOR"
+queue = "pe-processor"
