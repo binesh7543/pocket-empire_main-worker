@@ -1,0 +1,34 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pocket-empire", // यहाँ तुम्हारे वर्कर का असली नाम आएगा
+  "main": "worker.js", // क्योंकि तुम्हारी फ़ाइल का नाम worker.js है
+  "compatibility_date": "2026-06-17",
+  
+  // तुम्हारी बाइंडिंग्स (जो तुमने पहले स्क्रीनशॉट में दिखाई थीं)
+  "ai": {
+    "binding": "AI"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pocket-empire-db",
+      "database_id": "यहाँ_अपने_D1_की_असली_ID_डालो" 
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "PE_COLLECTOR",
+        "queue": "pe-collector"
+      },
+      {
+        "binding": "PE_PROCESSOR",
+        "queue": "pe-processor"
+      },
+      {
+        "binding": "PE_PUBLISHER",
+        "queue": "pe-publisher"
+      }
+    ]
+  }
+}
