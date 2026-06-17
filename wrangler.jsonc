@@ -1,17 +1,1 @@
-{
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "pocket-empire",
-  "main": "src/worker.js", // सुनिश्चित करें कि आपका worker.js इसी पाथ (path) पर हो
-  "compatibility_date": "2026-06-14",
-  
-  // आपकी क्यू (Queue) की बाइंडिंग यहाँ सुरक्षित रहेगी
-  "queues": {
-    "consumers": [
-      {
-        "queue": "pocket-empire-queue", // यहाँ अपनी असली Queue का नाम डालें जो Cloudflare में है
-        "max_batch_size": 10,
-        "max_batch_timeout": 5
-      }
-    ]
-  }
-}
+t
