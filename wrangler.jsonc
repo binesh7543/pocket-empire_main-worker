@@ -1,18 +1,5 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "pocket-empire",
+  "name": "pocket-empire-admin",
   "main": "worker.js",
-  "compatibility_date": "2026-06-17",
-  
-  "ai": {
-    "binding": "AI"
-  },
-  
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "pocket-empire-db",
-      "database_id": "यहाँ_अपने_D1_की_असली_ID_डालो"
-    }
-  ]
+  "compatibility_date": "2026-06-15"
 }
