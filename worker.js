@@ -3,6 +3,7 @@ export default {
   async fetch(request, env, ctx) {
     const html = `
       <!DOCTYPE html>
+      
       <html lang="hi">
       <head>
           <meta charset="UTF-8">
