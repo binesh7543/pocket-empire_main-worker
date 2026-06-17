@@ -9,6 +9,7 @@ export default {
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Pocket Empire — Main Engine Trial</title>
         <style>
+
         
             body {
                 font-family: 'Segoe UI', system-ui, sans-serif;
