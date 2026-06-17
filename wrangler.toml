@@ -7,10 +7,6 @@ binding = "DB"
 database_name = "pocket-empire-db"
 database_id = "TUMHARA_D1_ID"
 
-[[kv_namespaces]]
-binding = "PE_ADMIN_KV"
-id = "TUMHARA_KV_ID"
-
 [[queues.consumers]]
 queue = "pe-processor"
 max_batch_size = 10
