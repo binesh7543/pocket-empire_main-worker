@@ -99,48 +99,16 @@ export default {
 // SCHEMA — Auto Migration
 // ============================================================
 async function ensureSchema(env) {
-  await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS admins (
-      admin_id TEXT PRIMARY KEY,
-      name TEXT,
-      tone TEXT DEFAULT 'hinglish',
-      template_id TEXT DEFAULT 'DEFAULT',
-      active INTEGER DEFAULT 1,
-      created_at TEXT
-    );
-    CREATE TABLE IF NOT EXISTS pending_posts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      admin_id TEXT,
-      pattern INTEGER DEFAULT 1,
-      topic TEXT,
-      target_date TEXT,
-      status TEXT DEFAULT 'pending',
-      created_at TEXT
-    );
-    CREATE TABLE IF NOT EXISTS event_registry (
-      event_id TEXT PRIMARY KEY,
-      admin_id TEXT,
-      title TEXT,
-      published_url TEXT,
-      published_date TEXT,
-      pattern INTEGER,
-      tone TEXT,
-      created_at TEXT
-    );
-    CREATE TABLE IF NOT EXISTS audit_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      admin_id TEXT,
-      action TEXT,
-      detail TEXT,
-      created_at TEXT
-    );
-    CREATE TABLE IF NOT EXISTS system_settings (
-      key TEXT PRIMARY KEY,
-      value TEXT
-    );
-  `);
+  await env.DB.exec(`CREATE TABLE IF NOT EXISTS admins (admin_id TEXT PRIMARY KEY, name TEXT, tone TEXT DEFAULT 'hinglish', template_id TEXT DEFAULT 'DEFAULT', active INTEGER DEFAULT 1, created_at TEXT)`);
+  
+  await env.DB.exec(`CREATE TABLE IF NOT EXISTS pending_posts (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id TEXT, pattern INTEGER DEFAULT 1, topic TEXT, target_date TEXT, status TEXT DEFAULT 'pending', created_at TEXT)`);
+  
+  await env.DB.exec(`CREATE TABLE IF NOT EXISTS event_registry (event_id TEXT PRIMARY KEY, admin_id TEXT, title TEXT, published_url TEXT, published_date TEXT, pattern INTEGER, tone TEXT, created_at TEXT)`);
+  
+  await env.DB.exec(`CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, admin_id TEXT, action TEXT, detail TEXT, created_at TEXT)`);
+  
+  await env.DB.exec(`CREATE TABLE IF NOT EXISTS system_settings (key TEXT PRIMARY KEY, value TEXT)`);
 }
-
 // ============================================================
 // AUTH — Verify Master Token
 // ============================================================
