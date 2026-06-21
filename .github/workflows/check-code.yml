@@ -9,31 +9,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: 1. Checkout Code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: 1. Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: 2. Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
+      - name: 2. Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-  - name: 3. Install ESLint
-  run: npm init -y && npm install eslint@8 --save-dev
+      - name: 3. Install ESLint
+        run: npm init -y && npm install eslint@8 --save-dev
 
-- name: 4. JS Syntax Check
-  run: npx eslint "**/*.js" --env es2021 --parser-options=sourceType:module
+      - name: 4. JS Syntax Check
+        run: npx eslint "**/*.js" --env es2021 --parser-options=sourceType:module
 
-    - name: 5. Secret Leak Check
-      uses: trufflesecurity/trufflehog@main
-      with:
-        path: ./
-        base: ${{ github.event.repository.default_branch }}
+      - name: 5. Secret Leak Check
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: ${{ github.event.repository.default_branch }}
 
-    - name: 6. Wrangler Validate
-      uses: cloudflare/wrangler-action@v3
-      with:
-        apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        command: deploy --dry-run
+      - name: 6. Wrangler Validate
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy --dry-run
