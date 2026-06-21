@@ -23,7 +23,7 @@ jobs:
       run: npm init -y && npm install eslint --save-dev
 
     - name: 4. JS Syntax Check
-      run: npx eslint "**/*.js" --env es2021 --parser-options=sourceType:module
+      run: npx eslint "**/*.js" --parser-options=ecmaVersion:2021,sourceType:module
 
     - name: 5. Secret Leak Check
       uses: trufflesecurity/trufflehog@main
