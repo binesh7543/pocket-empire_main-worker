@@ -1,5 +1,5 @@
 name = "pocket-empire"
-main = "src/main.js"                     # after modularisation
+main = "src/main.js"
 compatibility_date = "2024-01-01"
 
 # D1 Database
@@ -8,11 +8,11 @@ binding = "DB"
 database_name = "pocket-empire-db"
 database_id = "ab478d5b-d012-44e1-a1ca-71af8b202f9e"
 
-# Workers AI
-[[ai]]
+# Workers AI (यहाँ बदलाव किया है: [[ai]] की जगह [ai])
+[ai]
 binding = "AI"
 
-# Queue Producers (for sending messages)
+# Queue Producers
 [[queues.producers]]
 binding = "PE_COLLECTOR"
 queue = "pe-collector"
@@ -25,12 +25,12 @@ queue = "pe-processor"
 binding = "PE_PUBLISHER"
 queue = "pe-publisher"
 
-# Queue Consumer (only for the processor queue)
+# Queue Consumer
 [[queues.consumers]]
 queue = "pe-processor"
 max_batch_size = 10
 
-# Environment Variables – set these as secrets with `wrangler secret put`
+# Environment Variables
 [vars]
 MASTER_TOKEN = ""
 TELEGRAM_TOKEN = ""
@@ -38,5 +38,5 @@ TELEGRAM_CHAT_ID = ""
 APPS_SCRIPT_URL = ""
 GROQ_API_KEY = ""
 OPENROUTER_API_KEY = ""
-UNSPLASH_ACCESS_KEY = ""   # not used, kept for compatibility
+UNSPLASH_ACCESS_KEY = ""
 MARKETAUX_API_KEY = ""
