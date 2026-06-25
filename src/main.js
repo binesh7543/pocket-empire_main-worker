@@ -1,65 +1,71 @@
 // ============================================================
 // FILE: src/main.js
-// LINE-NUMBERED FOR ERROR TRACKING
+// VERSION: 1.0.0
 // ============================================================
 
-import { Hono } from 'hono';                       // L1
-import { cors } from 'hono/cors';                 // L2
-import { authMiddleware } from './middleware/auth.js'; // L3
-import { validate } from './middleware/validator.js';   // L4
-import { RunSchema } from './schemas/index.js';   // L5
-import healthRoutes from './routes/health.js';    // L6
-import { trigger } from './routes/run.js';        // L7  ← YAHAN CHANGE: named import
-import adminRoutes from './routes/admins.js';     // L8
-import pendingRoutes from './routes/pending.js';  // L9
-import logsRoutes from './routes/logs.js';        // L10
-import { processRun } from './pipeline.js';       // L11
-import { logAudit } from './db.js';               // L12
-import { sendTelegram } from './utils.js';        // L13
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { authMiddleware } from './middleware/auth.js';
+import { validate } from './middleware/validator.js';
+import { RunSchema } from './schemas/index.js';
+import healthRoutes from './routes/health.js';
+import { trigger } from './routes/run.js';             // named import
+import adminRoutes from './routes/admins.js';
+import pendingRoutes from './routes/pending.js';
+import logsRoutes from './routes/logs.js';
+import { processRun } from './pipeline.js';
+import { logAudit } from './db.js';
+import { sendTelegram } from './utils.js';
 
-const app = new Hono();                           // L15
+const app = new Hono();
 
-// Global middlewares
-app.use('*', cors());                             // L18
-app.use('*', async (c, next) => {                 // L19
-  c.set('requestId', `req-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`); // L20
-  await next();                                   // L21
-});                                               // L22
+// ---------- Global Middlewares ----------
+app.use('*', cors());
+app.use('*', async (c, next) => {
+  c.set('requestId', `req-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+  await next();
+});
 
-// ---------- GLOBAL ERROR HANDLER (L24–L38) ----------
-app.onError(async (err, c) => {                   // L24
-  const requestId = c.get('requestId');           // L25
-  const env = c.env;                             // L26
-  await logAudit(env, 'SYSTEM', 'UNHANDLED_ERROR', `[${requestId}] ${err.message}\n${err.stack}`); // L27
-  await sendTelegram(env, `🚨 CRITICAL ERROR\nRequest: ${requestId}\nError: ${err.message}\nStack: ${err.stack?.slice(0, 300)}`); // L28
-  return c.json({ error: 'Internal Server Error', requestId, message: err.message }, 500); // L29
-});                                               // L30
+// ---------- Global Error Handler ----------
+app.onError(async (err, c) => {
+  const requestId = c.get('requestId');
+  const env = c.env;
+  await logAudit(env, 'SYSTEM', 'UNHANDLED_ERROR', `[${requestId}] ${err.message}\n${err.stack}`);
+  await sendTelegram(env, `🚨 CRITICAL ERROR\nRequest: ${requestId}\nError: ${err.message}\nStack: ${err.stack?.slice(0, 300)}`);
+  return c.json({ error: 'Internal Server Error', requestId, message: err.message }, 500);
+});
 
-// ---------- ROUTES ----------
-app.route('/health', healthRoutes);               // L33
-app.use('/admin/*', authMiddleware);              // L34
-app.route('/admin', adminRoutes);                 // L35
-app.route('/admin', pendingRoutes);               // L36
-app.route('/admin', logsRoutes);                  // L37
+// ---------- Route Mounting ----------
+app.route('/health', healthRoutes);
+app.use('/admin/*', authMiddleware);
+app.route('/admin', adminRoutes);
+app.route('/admin', pendingRoutes);
+app.route('/admin', logsRoutes);
 
-// ---------- /run ROUTE (FIXED) ----------
-app.post('/run', authMiddleware, validate(RunSchema), trigger); // L39  ← YAHAN CHANGE
+// ---------- /run Route ----------
+app.post('/run', authMiddleware, validate(RunSchema), trigger);
 
-// ---------- QUEUE CONSUMER (L42–L56) ----------
-export default {                                  // L42
-  fetch: app.fetch,                               // L43
-  async queue(batch, env) {                       // L44
-    for (const msg of batch.messages) {           // L45
-      try {                                       // L46
-        const data = msg.body;                    // L47
-        if (data.type === 'RUN') {                // L48
-          await processRun(data, env);            // L49
-        }                                         // L50
-        msg.ack();                                // L51
-      } catch (e) {                               // L52
-        await logAudit(env, 'SYSTEM', 'QUEUE_ERROR', e.message); // L53
-        msg.retry();                              // L54
-      }                                           // L55
-    }                                             // L56
-  }                                               // L57
-};                                                // L58
+// ---------- Queue Consumer ----------
+export default {
+  fetch: app.fetch,
+
+  async queue(batch, env) {
+    console.log(`[Queue] Received ${batch.messages.length} message(s)`);
+    for (const msg of batch.messages) {
+      try {
+        const data = msg.body;
+        console.log(`[Queue] Processing message:`, JSON.stringify(data));
+        if (data.type === 'RUN') {
+          console.log(`[Queue] Calling processRun for run_id = ${data.run_id}`);
+          await processRun(data, env);
+          console.log(`[Queue] processRun completed for ${data.run_id}`);
+        }
+        msg.ack();
+      } catch (e) {
+        console.error(`[Queue] Error processing message:`, e);
+        await logAudit(env, 'SYSTEM', 'QUEUE_ERROR', e.message);
+        msg.retry();
+      }
+    }
+  }
+};
