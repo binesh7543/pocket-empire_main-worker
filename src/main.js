@@ -9,7 +9,7 @@ import { authMiddleware } from './middleware/auth.js'; // L3
 import { validate } from './middleware/validator.js';   // L4
 import { RunSchema } from './schemas/index.js';   // L5
 import healthRoutes from './routes/health.js';    // L6
-import runRoutes from './routes/run.js';          // L7
+import { trigger } from './routes/run.js';        // L7  ← YAHAN CHANGE: named import
 import adminRoutes from './routes/admins.js';     // L8
 import pendingRoutes from './routes/pending.js';  // L9
 import logsRoutes from './routes/logs.js';        // L10
@@ -41,23 +41,25 @@ app.use('/admin/*', authMiddleware);              // L34
 app.route('/admin', adminRoutes);                 // L35
 app.route('/admin', pendingRoutes);               // L36
 app.route('/admin', logsRoutes);                  // L37
-app.post('/run', authMiddleware, validate(RunSchema), runRoutes.trigger); // L38
 
-// ---------- QUEUE CONSUMER (L41–L53) ----------
-export default {                                  // L41
-  fetch: app.fetch,                               // L42
-  async queue(batch, env) {                       // L43
-    for (const msg of batch.messages) {           // L44
-      try {                                       // L45
-        const data = msg.body;                    // L46
-        if (data.type === 'RUN') {                // L47
-          await processRun(data, env);            // L48
-        }                                         // L49
-        msg.ack();                                // L50
-      } catch (e) {                               // L51
-        await logAudit(env, 'SYSTEM', 'QUEUE_ERROR', e.message); // L52
-        msg.retry();                              // L53
-      }                                           // L54
-    }                                             // L55
-  }                                               // L56
-};                                                // L57
+// ---------- /run ROUTE (FIXED) ----------
+app.post('/run', authMiddleware, validate(RunSchema), trigger); // L39  ← YAHAN CHANGE
+
+// ---------- QUEUE CONSUMER (L42–L56) ----------
+export default {                                  // L42
+  fetch: app.fetch,                               // L43
+  async queue(batch, env) {                       // L44
+    for (const msg of batch.messages) {           // L45
+      try {                                       // L46
+        const data = msg.body;                    // L47
+        if (data.type === 'RUN') {                // L48
+          await processRun(data, env);            // L49
+        }                                         // L50
+        msg.ack();                                // L51
+      } catch (e) {                               // L52
+        await logAudit(env, 'SYSTEM', 'QUEUE_ERROR', e.message); // L53
+        msg.retry();                              // L54
+      }                                           // L55
+    }                                             // L56
+  }                                               // L57
+};                                                // L58
