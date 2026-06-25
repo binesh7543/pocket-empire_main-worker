@@ -1,133 +1,63 @@
-import { ensureSchema, logAudit, getAdmins, saveAdmin, deleteAdmin, getPending, savePending, cancelPending, getLogs, getEvents, getSettings, saveSettings, resetAll } from './db.js';
-import { processRun } from './pipeline.js';
-import { json, sendTelegram } from './utils.js';
+// ============================================================
+// FILE: src/main.js
+// LINE-NUMBERED FOR ERROR TRACKING
+// ============================================================
 
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    const path = url.pathname;
+import { Hono } from 'hono';                       // L1
+import { cors } from 'hono/cors';                 // L2
+import { authMiddleware } from './middleware/auth.js'; // L3
+import { validate } from './middleware/validator.js';   // L4
+import { RunSchema } from './schemas/index.js';   // L5
+import healthRoutes from './routes/health.js';    // L6
+import runRoutes from './routes/run.js';          // L7
+import adminRoutes from './routes/admins.js';     // L8
+import pendingRoutes from './routes/pending.js';  // L9
+import logsRoutes from './routes/logs.js';        // L10
+import { processRun } from './pipeline.js';       // L11
+import { logAudit } from './db.js';               // L12
+import { sendTelegram } from './utils.js';        // L13
 
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-    };
+const app = new Hono();                           // L15
 
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
-    }
+// Global middlewares
+app.use('*', cors());                             // L18
+app.use('*', async (c, next) => {                 // L19
+  c.set('requestId', `req-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`); // L20
+  await next();                                   // L21
+});                                               // L22
 
-    try {
-      await ensureSchema(env);
+// ---------- GLOBAL ERROR HANDLER (L24–L38) ----------
+app.onError(async (err, c) => {                   // L24
+  const requestId = c.get('requestId');           // L25
+  const env = c.env;                             // L26
+  await logAudit(env, 'SYSTEM', 'UNHANDLED_ERROR', `[${requestId}] ${err.message}\n${err.stack}`); // L27
+  await sendTelegram(env, `🚨 CRITICAL ERROR\nRequest: ${requestId}\nError: ${err.message}\nStack: ${err.stack?.slice(0, 300)}`); // L28
+  return c.json({ error: 'Internal Server Error', requestId, message: err.message }, 500); // L29
+});                                               // L30
 
-      const auth = request.headers.get('Authorization') || '';
-      const token = auth.replace('Bearer ', '').trim();
-      const isAuthorized = token === env.MASTER_TOKEN;
-      const requireAuth = () => {
-        if (!isAuthorized) return json({ error: 'Unauthorized' }, 401, corsHeaders);
-        return null;
-      };
+// ---------- ROUTES ----------
+app.route('/health', healthRoutes);               // L33
+app.use('/admin/*', authMiddleware);              // L34
+app.route('/admin', adminRoutes);                 // L35
+app.route('/admin', pendingRoutes);               // L36
+app.route('/admin', logsRoutes);                  // L37
+app.post('/run', authMiddleware, validate(RunSchema), runRoutes.trigger); // L38
 
-      // Health
-      if (path === '/health' && request.method === 'GET') {
-        const err = requireAuth();
-        if (err) return err;
-        const dbCheck = await env.DB.prepare('SELECT COUNT(*) as c FROM audit_log').first();
-        return json({ status: 'OK', version: 'v5.0', db: 'connected', logs: dbCheck?.c || 0, timestamp: new Date().toISOString() }, 200, corsHeaders);
-      }
-
-      // Run
-      if (path === '/run' && request.method === 'POST') {
-        const err = requireAuth();
-        if (err) return err;
-        const body = await request.json();
-        const { admin_id = 'DEFAULT', pattern = 1, topic = '', tone = 'hinglish' } = body;
-        const run_id = `RUN-${Date.now()}`;
-        await logAudit(env, admin_id, 'RUN_STARTED', `pattern=${pattern} topic=${topic}`);
-        await env.PE_PROCESSOR.send({ type: 'RUN', run_id, admin_id, pattern, topic, tone, timestamp: new Date().toISOString() });
-        return json({ success: true, run_id, message: 'Run queued' }, 200, corsHeaders);
-      }
-
-      // Admin routes
-      if (path === '/admin/admins' && request.method === 'GET') {
-        const err = requireAuth();
-        if (err) return err;
-        return getAdmins(env, corsHeaders);
-      }
-      if (path === '/admin/admins' && request.method === 'POST') {
-        const err = requireAuth();
-        if (err) return err;
-        const body = await request.json();
-        return saveAdmin(env, body, corsHeaders);
-      }
-      if (path === '/admin/admins/delete' && request.method === 'POST') {
-        const err = requireAuth();
-        if (err) return err;
-        const body = await request.json();
-        return deleteAdmin(env, body, corsHeaders);
-      }
-      if (path === '/admin/pending' && request.method === 'GET') {
-        const err = requireAuth();
-        if (err) return err;
-        return getPending(env, corsHeaders);
-      }
-      if (path === '/admin/pending' && request.method === 'POST') {
-        const err = requireAuth();
-        if (err) return err;
-        const body = await request.json();
-        return savePending(env, body, corsHeaders);
-      }
-      if (path === '/admin/pending/cancel' && request.method === 'POST') {
-        const err = requireAuth();
-        if (err) return err;
-        const body = await request.json();
-        return cancelPending(env, body, corsHeaders);
-      }
-      if (path === '/admin/logs' && request.method === 'GET') {
-        const err = requireAuth();
-        if (err) return err;
-        return getLogs(env, corsHeaders);
-      }
-      if (path === '/admin/events' && request.method === 'GET') {
-        const err = requireAuth();
-        if (err) return err;
-        return getEvents(env, corsHeaders);
-      }
-      if (path === '/admin/settings' && request.method === 'GET') {
-        const err = requireAuth();
-        if (err) return err;
-        return getSettings(env, corsHeaders);
-      }
-      if (path === '/admin/settings' && request.method === 'POST') {
-        const err = requireAuth();
-        if (err) return err;
-        const body = await request.json();
-        return saveSettings(env, body, corsHeaders);
-      }
-      if (path === '/admin/reset-all' && request.method === 'POST') {
-        const err = requireAuth();
-        if (err) return err;
-        return resetAll(env, corsHeaders);
-      }
-
-      return json({ error: 'Not Found' }, 404, corsHeaders);
-    } catch (e) {
-      await logAudit(env, 'SYSTEM', 'ERROR', e.message);
-      return json({ error: e.message }, 500, corsHeaders);
-    }
-  },
-
-  async queue(batch, env) {
-    for (const msg of batch.messages) {
-      try {
-        const data = msg.body;
-        if (data.type === 'RUN') {
-          await processRun(data, env);
-        }
-        msg.ack();
-      } catch (e) {
-        msg.retry();
-      }
-    }
-  }
-};
+// ---------- QUEUE CONSUMER (L41–L53) ----------
+export default {                                  // L41
+  fetch: app.fetch,                               // L42
+  async queue(batch, env) {                       // L43
+    for (const msg of batch.messages) {           // L44
+      try {                                       // L45
+        const data = msg.body;                    // L46
+        if (data.type === 'RUN') {                // L47
+          await processRun(data, env);            // L48
+        }                                         // L49
+        msg.ack();                                // L50
+      } catch (e) {                               // L51
+        await logAudit(env, 'SYSTEM', 'QUEUE_ERROR', e.message); // L52
+        msg.retry();                              // L53
+      }                                           // L54
+    }                                             // L55
+  }                                               // L56
+};                                                // L57

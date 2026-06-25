@@ -1,155 +1,170 @@
-import { json } from './utils.js';
+// ============================================================
+// FILE: src/db.js
+// LINE-NUMBERED FOR ERROR TRACKING
+// ============================================================
 
-export async function ensureSchema(env) {
-  await env.DB.exec(`
-    CREATE TABLE IF NOT EXISTS admins (
-      admin_id TEXT PRIMARY KEY,
-      name TEXT,
-      tone TEXT DEFAULT 'hinglish',
-      template_id TEXT DEFAULT 'DEFAULT',
-      active INTEGER DEFAULT 1,
-      created_at TEXT
-    );
-    CREATE TABLE IF NOT EXISTS pending_posts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      admin_id TEXT,
-      pattern INTEGER DEFAULT 1,
-      topic TEXT,
-      target_date TEXT,
-      status TEXT DEFAULT 'pending',
-      created_at TEXT
-    );
-    CREATE TABLE IF NOT EXISTS event_registry (
-      event_id TEXT PRIMARY KEY,
-      admin_id TEXT,
-      title TEXT,
-      published_url TEXT,
-      published_date TEXT,
-      pattern INTEGER,
-      tone TEXT,
-      created_at TEXT
-    );
-    CREATE TABLE IF NOT EXISTS audit_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      admin_id TEXT,
-      action TEXT,
-      detail TEXT,
-      created_at TEXT
-    );
-    CREATE TABLE IF NOT EXISTS system_settings (
-      key TEXT PRIMARY KEY,
-      value TEXT
-    );
-  `);
-}
+import { json } from './utils.js';                // L1
 
-export async function logAudit(env, admin_id, action, detail) {
-  try {
-    await env.DB.prepare(
-      'INSERT INTO audit_log (admin_id, action, detail, created_at) VALUES (?, ?, ?, ?)'
-    ).bind(admin_id || 'SYSTEM', action, detail || '', new Date().toISOString()).run();
-  } catch (e) { /* silent fail */ }
-}
+// ---------- SCHEMA (split into separate statements for D1) ----------
+export async function ensureSchema(env) {        // L4
+  await env.DB.exec(`                            // L5
+    CREATE TABLE IF NOT EXISTS admins (          // L6
+      admin_id TEXT PRIMARY KEY,                 // L7
+      name TEXT,                                 // L8
+      tone TEXT DEFAULT 'hinglish',              // L9
+      template_id TEXT DEFAULT 'DEFAULT',        // L10
+      active INTEGER DEFAULT 1,                  // L11
+      created_at TEXT                            // L12
+    );                                           // L13
+  `);                                            // L14
+  await env.DB.exec(`                            // L16
+    CREATE TABLE IF NOT EXISTS pending_posts (   // L17
+      id INTEGER PRIMARY KEY AUTOINCREMENT,      // L18
+      admin_id TEXT,                             // L19
+      pattern INTEGER DEFAULT 1,                 // L20
+      topic TEXT,                                // L21
+      target_date TEXT,                          // L22
+      status TEXT DEFAULT 'pending',             // L23
+      created_at TEXT                            // L24
+    );                                           // L25
+  `);                                            // L26
+  await env.DB.exec(`                            // L28
+    CREATE TABLE IF NOT EXISTS event_registry (  // L29
+      event_id TEXT PRIMARY KEY,                 // L30
+      admin_id TEXT,                             // L31
+      title TEXT,                                // L32
+      published_url TEXT,                        // L33
+      published_date TEXT,                       // L34
+      pattern INTEGER,                           // L35
+      tone TEXT,                                 // L36
+      created_at TEXT                            // L37
+    );                                           // L38
+  `);                                            // L39
+  await env.DB.exec(`                            // L41
+    CREATE TABLE IF NOT EXISTS audit_log (       // L42
+      id INTEGER PRIMARY KEY AUTOINCREMENT,      // L43
+      admin_id TEXT,                             // L44
+      action TEXT,                               // L45
+      detail TEXT,                               // L46
+      created_at TEXT                            // L47
+    );                                           // L48
+  `);                                            // L49
+  await env.DB.exec(`                            // L51
+    CREATE TABLE IF NOT EXISTS system_settings ( // L52
+      key TEXT PRIMARY KEY,                      // L53
+      value TEXT                                 // L54
+    );                                           // L55
+  `);                                            // L56
+}                                                // L57
 
-// Admins
-export async function getAdmins(env, corsHeaders) {
-  const rows = await env.DB.prepare('SELECT * FROM admins ORDER BY created_at DESC').all();
-  return json({ admins: rows.results || [] }, 200, corsHeaders);
-}
+// ---------- AUDIT LOG ----------
+export async function logAudit(env, admin_id, action, detail) { // L60
+  try {                                           // L61
+    await env.DB.prepare(                         // L62
+      'INSERT INTO audit_log (admin_id, action, detail, created_at) VALUES (?, ?, ?, ?)' // L63
+    ).bind(admin_id || 'SYSTEM', action, detail || '', new Date().toISOString()).run(); // L64
+  } catch (e) { /* silent fail */ }               // L65
+}                                                 // L66
 
-export async function saveAdmin(env, body, corsHeaders) {
-  const { admin_id, name, tone = 'hinglish', template_id = 'DEFAULT', active = 1 } = body;
-  if (!admin_id || !name) return json({ error: 'admin_id and name required' }, 400, corsHeaders);
-  await env.DB.prepare(`
-    INSERT INTO admins (admin_id, name, tone, template_id, active, created_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(admin_id) DO UPDATE SET
-      name=excluded.name, tone=excluded.tone,
-      template_id=excluded.template_id, active=excluded.active
-  `).bind(admin_id, name, tone, template_id, active, new Date().toISOString()).run();
-  await logAudit(env, 'MASTER', 'ADMIN_SAVED', `admin_id=${admin_id}`);
-  return json({ success: true }, 200, corsHeaders);
-}
+// ---------- ADMINS ----------
+export async function getAdmins(env) {           // L69
+  const rows = await env.DB.prepare('SELECT * FROM admins ORDER BY created_at DESC').all(); // L70
+  return { admins: rows.results || [] };         // L71
+}                                                // L72
 
-export async function deleteAdmin(env, body, corsHeaders) {
-  const { admin_id } = body;
-  if (!admin_id) return json({ error: 'admin_id required' }, 400, corsHeaders);
-  await env.DB.prepare('DELETE FROM admins WHERE admin_id = ?').bind(admin_id).run();
-  await logAudit(env, 'MASTER', 'ADMIN_DELETED', `admin_id=${admin_id}`);
-  return json({ success: true }, 200, corsHeaders);
-}
+export async function saveAdmin(env, body) {    // L74
+  const { admin_id, name, tone = 'hinglish', template_id = 'DEFAULT', active = 1 } = body; // L75
+  if (!admin_id || !name) return { error: 'admin_id and name required' }; // L76
+  await env.DB.prepare(`                         // L77
+    INSERT INTO admins (admin_id, name, tone, template_id, active, created_at) // L78
+    VALUES (?, ?, ?, ?, ?, ?)                    // L79
+    ON CONFLICT(admin_id) DO UPDATE SET          // L80
+      name=excluded.name, tone=excluded.tone,    // L81
+      template_id=excluded.template_id, active=excluded.active // L82
+  `).bind(admin_id, name, tone, template_id, active, new Date().toISOString()).run(); // L83
+  await logAudit(env, 'MASTER', 'ADMIN_SAVED', `admin_id=${admin_id}`); // L84
+  return { success: true };                      // L85
+}                                                // L86
 
-// Pending
-export async function getPending(env, corsHeaders) {
-  const rows = await env.DB.prepare(
-    "SELECT * FROM pending_posts WHERE status='pending' ORDER BY target_date ASC"
-  ).all();
-  return json({ pending: rows.results || [] }, 200, corsHeaders);
-}
+export async function deleteAdmin(env, body) {  // L88
+  const { admin_id } = body;                     // L89
+  if (!admin_id) return { error: 'admin_id required' }; // L90
+  await env.DB.prepare('DELETE FROM admins WHERE admin_id = ?').bind(admin_id).run(); // L91
+  await logAudit(env, 'MASTER', 'ADMIN_DELETED', `admin_id=${admin_id}`); // L92
+  return { success: true };                      // L93
+}                                                // L94
 
-export async function savePending(env, body, corsHeaders) {
-  const { admin_id, pattern = 1, topic = '', target_date, immediate = false } = body;
-  if (immediate) {
-    const adminRow = await env.DB.prepare('SELECT * FROM admins WHERE admin_id = ?').bind(admin_id).first();
-    const tone = adminRow?.tone || 'hinglish';
-    await env.PE_PROCESSOR.send({
-      type: 'RUN', run_id: `RUN-${Date.now()}`,
-      admin_id, pattern, topic, tone,
-      timestamp: new Date().toISOString()
-    });
-    await logAudit(env, admin_id, 'IMMEDIATE_RUN', `pattern=${pattern}`);
-    return json({ success: true, queued: true }, 200, corsHeaders);
-  }
-  await env.DB.prepare(`
-    INSERT INTO pending_posts (admin_id, pattern, topic, target_date, status, created_at)
-    VALUES (?, ?, ?, ?, 'pending', ?)
-  `).bind(admin_id, pattern, topic, target_date || '', new Date().toISOString()).run();
-  await logAudit(env, admin_id, 'PENDING_SAVED', `date=${target_date}`);
-  return json({ success: true }, 200, corsHeaders);
-}
+// ---------- PENDING ----------
+export async function getPending(env) {         // L97
+  const rows = await env.DB.prepare(            // L98
+    "SELECT * FROM pending_posts WHERE status='pending' ORDER BY target_date ASC" // L99
+  ).all();                                      // L100
+  return { pending: rows.results || [] };       // L101
+}                                               // L102
 
-export async function cancelPending(env, body, corsHeaders) {
-  const { id } = body;
-  await env.DB.prepare("UPDATE pending_posts SET status='cancelled' WHERE id=?").bind(id).run();
-  await logAudit(env, 'MASTER', 'PENDING_CANCELLED', `id=${id}`);
-  return json({ success: true }, 200, corsHeaders);
-}
+export async function savePending(env, body) { // L104
+  const { admin_id, pattern = 1, topic = '', target_date, immediate = false } = body; // L105
+  if (immediate) {                             // L106
+    const adminRow = await env.DB.prepare('SELECT * FROM admins WHERE admin_id = ?').bind(admin_id).first(); // L107
+    const tone = adminRow?.tone || 'hinglish'; // L108
+    await env.PE_PROCESSOR.send({              // L109
+      type: 'RUN', run_id: `RUN-${Date.now()}`, // L110
+      admin_id, pattern, topic, tone,          // L111
+      timestamp: new Date().toISOString()      // L112
+    });                                        // L113
+    await logAudit(env, admin_id, 'IMMEDIATE_RUN', `pattern=${pattern}`); // L114
+    return { success: true, queued: true };    // L115
+  }                                            // L116
+  await env.DB.prepare(`                       // L117
+    INSERT INTO pending_posts (admin_id, pattern, topic, target_date, status, created_at) // L118
+    VALUES (?, ?, ?, ?, 'pending', ?)          // L119
+  `).bind(admin_id, pattern, topic, target_date || '', new Date().toISOString()).run(); // L120
+  await logAudit(env, admin_id, 'PENDING_SAVED', `date=${target_date}`); // L121
+  return { success: true };                    // L122
+}                                              // L123
 
-// Logs, Events, Settings
-export async function getLogs(env, corsHeaders) {
-  const rows = await env.DB.prepare('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 100').all();
-  return json({ logs: rows.results || [] }, 200, corsHeaders);
-}
+export async function cancelPending(env, body) { // L125
+  const { id } = body;                         // L126
+  await env.DB.prepare("UPDATE pending_posts SET status='cancelled' WHERE id=?").bind(id).run(); // L127
+  await logAudit(env, 'MASTER', 'PENDING_CANCELLED', `id=${id}`); // L128
+  return { success: true };                    // L129
+}                                              // L130
 
-export async function getEvents(env, corsHeaders) {
-  const rows = await env.DB.prepare('SELECT * FROM event_registry ORDER BY created_at DESC LIMIT 50').all();
-  return json({ events: rows.results || [] }, 200, corsHeaders);
-}
+// ---------- LOGS, EVENTS, SETTINGS ----------
+export async function getLogs(env) {           // L133
+  const rows = await env.DB.prepare('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 100').all(); // L134
+  return { logs: rows.results || [] };         // L135
+}                                              // L136
 
-export async function getSettings(env, corsHeaders) {
-  const rows = await env.DB.prepare('SELECT * FROM system_settings').all();
-  const settings = {};
-  (rows.results || []).forEach(r => { settings[r.key] = r.value; });
-  return json({ settings }, 200, corsHeaders);
-}
+export async function getEvents(env) {         // L138
+  const rows = await env.DB.prepare('SELECT * FROM event_registry ORDER BY created_at DESC LIMIT 50').all(); // L139
+  return { events: rows.results || [] };       // L140
+}                                              // L141
 
-export async function saveSettings(env, body, corsHeaders) {
-  for (const [key, value] of Object.entries(body)) {
-    await env.DB.prepare(`
-      INSERT INTO system_settings (key, value) VALUES (?, ?)
-      ON CONFLICT(key) DO UPDATE SET value=excluded.value
-    `).bind(key, String(value)).run();
-  }
-  await logAudit(env, 'MASTER', 'SETTINGS_SAVED', JSON.stringify(body));
-  return json({ success: true }, 200, corsHeaders);
-}
+export async function getSettings(env) {       // L143
+  const rows = await env.DB.prepare('SELECT * FROM system_settings').all(); // L144
+  const settings = {};                         // L145
+  (rows.results || []).forEach(r => { settings[r.key] = r.value; }); // L146
+  return { settings };                         // L147
+}                                              // L148
 
-export async function resetAll(env, corsHeaders) {
-  await env.DB.exec(`
-    DELETE FROM audit_log;
-    DELETE FROM event_registry;
-    DELETE FROM pending_posts;
-  `);
-  await logAudit(env, 'MASTER', 'RESET_ALL', 'Full reset performed');
-  return json({ success: true }, 200, corsHeaders);
-}
+export async function saveSettings(env, body) { // L150
+  for (const [key, value] of Object.entries(body)) { // L151
+    await env.DB.prepare(`                      // L152
+      INSERT INTO system_settings (key, value) VALUES (?, ?) // L153
+      ON CONFLICT(key) DO UPDATE SET value=excluded.value // L154
+    `).bind(key, String(value)).run();         // L155
+  }                                            // L156
+  await logAudit(env, 'MASTER', 'SETTINGS_SAVED', JSON.stringify(body)); // L157
+  return { success: true };                    // L158
+}                                              // L159
+
+export async function resetAll(env) {          // L161
+  await env.DB.exec(`                          // L162
+    DELETE FROM audit_log;                     // L163
+    DELETE FROM event_registry;                // L164
+    DELETE FROM pending_posts;                 // L165
+  `);                                          // L166
+  await logAudit(env, 'MASTER', 'RESET_ALL', 'Full reset performed'); // L167
+  return { success: true };                    // L168
+}                                              // L169
