@@ -21,4 +21,4 @@ export const trigger = async (c) => {           // L5  ← यह export hona ch
 };                                             // L17
 
 // Optional: agar aap Hono app bhi export karna chahte ho toh alag se
-// but main.js directly trigger import kar raha hai, so yeh sufficient hai.
+// but main.js directly trigger import kar raha hai, so yeh sufficient hai.Aa
