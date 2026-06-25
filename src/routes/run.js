@@ -5,21 +5,20 @@
 import { Hono } from 'hono';                    // L1
 import { logAudit } from '../db.js';           // L2
 
-const app = new Hono();                         // L4
+// ---------- TRIGGER HANDLER (named export) ----------
+export const trigger = async (c) => {           // L5  ← यह export hona chahiye
+  const validated = c.get('validated');        // L6
+  const env = c.env;                           // L7
+  const { admin_id, pattern, topic, tone } = validated; // L8
+  const run_id = `RUN-${Date.now()}`;          // L9
+  await logAudit(env, admin_id, 'RUN_STARTED', `pattern=${pattern} topic=${topic}`); // L10
+  await env.PE_PROCESSOR.send({                // L11
+    type: 'RUN',                               // L12
+    run_id, admin_id, pattern, topic, tone,    // L13
+    timestamp: new Date().toISOString()        // L14
+  });                                          // L15
+  return c.json({ success: true, run_id, message: 'Run queued' }, 200); // L16
+};                                             // L17
 
-export const trigger = async (c) => {           // L6  ← exported handler
-  const validated = c.get('validated');        // L7
-  const env = c.env;                           // L8
-  const { admin_id, pattern, topic, tone } = validated; // L9
-  const run_id = `RUN-${Date.now()}`;          // L10
-  await logAudit(env, admin_id, 'RUN_STARTED', `pattern=${pattern} topic=${topic}`); // L11
-  await env.PE_PROCESSOR.send({                // L12
-    type: 'RUN',                               // L13
-    run_id, admin_id, pattern, topic, tone,    // L14
-    timestamp: new Date().toISOString()        // L15
-  });                                          // L16
-  return c.json({ success: true, run_id, message: 'Run queued' }, 200); // L17
-};                                             // L18
-
-app.post('/', trigger);                        // L20
-export default app;                            // L21
+// Optional: agar aap Hono app bhi export karna chahte ho toh alag se
+// but main.js directly trigger import kar raha hai, so yeh sufficient hai.Aa
