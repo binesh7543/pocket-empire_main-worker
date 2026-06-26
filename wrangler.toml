@@ -39,17 +39,7 @@ queue = "pe-publisher"
 queue = "pe-processor"
 max_batch_size = 10
 
-# ---------- Environment Variables ----------
-# सभी secrets को wrangler secret put से सेट करें
-[vars]
-MASTER_TOKEN = ""
-TELEGRAM_TOKEN = ""
-TELEGRAM_CHAT_ID = ""
-APPS_SCRIPT_URL = ""
-GROQ_API_KEY = ""
-OPENROUTER_API_KEY = ""
-UNSPLASH_ACCESS_KEY = ""   # वर्तमान में उपयोग नहीं, रखा गया है
-MARKETAUX_API_KEY = ""
+
 
 # ============================================================
 # End of wrangler.toml
