@@ -1,11 +1,11 @@
 # ============================================================
 # Pocket Empire v5.1 — wrangler.toml
 # Architecture: Hono.js + Zod + Modular Services
-# Entry: src/main.js
+# Entry: src/index.js
 # ============================================================
 
 name = "pocket-empire"
-main = "src/main.js"
+main = "src/index.js"
 compatibility_date = "2026-06-01"
 compatibility_flags = ["nodejs_compat"]
 
@@ -21,7 +21,6 @@ binding = "AI"
 
 # ---------- KV Namespace ----------
 # NOTE: Apna actual KV namespace ID yahan daalna (currently placeholder).
-# Fast read/write (cache, tokens, admin profiles) ke liye D1 se behtar hai.
 [[kv_namespaces]]
 binding = "PE_KV"
 id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
@@ -40,9 +39,6 @@ binding = "PE_PUBLISHER"
 queue = "pe-publisher"
 
 # ---------- Queue Consumers ----------
-# NOTE: Pehle sirf "pe-processor" consumer tha. Collector aur Publisher
-# queues ke liye bhi consumer chahiye, warna unme messages padhe hi nahi jaayenge.
-
 [[queues.consumers]]
 queue = "pe-collector"
 max_batch_size = 10
@@ -62,7 +58,5 @@ max_retries = 3
 dead_letter_queue = "pe-publisher-dlq"
 
 # ---------- Environment Variables ----------
-# ध्यान दें: [vars] aur sabhi khaali Secrets yahan se hata diya gaya hai.
-# GitHub deployment Cloudflare dashboard ke secrets ko kabhi nahi mitayega.
 # Secrets (MASTER_TOKEN, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, etc.) manually
 # Cloudflare dashboard se ya `wrangler secret put` se daale jaayenge.
