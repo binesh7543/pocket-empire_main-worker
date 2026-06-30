@@ -1,12 +1,13 @@
 # ============================================================
 # Pocket Empire v5.1 — wrangler.toml
 # Architecture: Hono.js + Zod + Modular Services
-# Entry: src/main.js
+# Entry: src/index.js
 # ============================================================
 
 name = "pocket-empire"
-main = "src/main.js"                     
-compatibility_date = "2024-01-01"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+compatibility_flags = ["nodejs_compat"]
 
 # ---------- D1 Database ----------
 [[d1_databases]]
@@ -17,6 +18,12 @@ database_id = "ab478d5b-d012-44e1-a1ca-71af8b202f9e"
 # ---------- Workers AI ----------
 [ai]
 binding = "AI"
+
+# ---------- KV Namespace ----------
+# NOTE: Apna actual KV namespace ID yahan daalna (currently placeholder).
+[[kv_namespaces]]
+binding = "PE_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
 
 # ---------- Queue Producers ----------
 [[queues.producers]]
@@ -31,11 +38,25 @@ queue = "pe-processor"
 binding = "PE_PUBLISHER"
 queue = "pe-publisher"
 
-# ---------- Queue Consumer ----------
+# ---------- Queue Consumers ----------
+[[queues.consumers]]
+queue = "pe-collector"
+max_batch_size = 10
+max_retries = 3
+dead_letter_queue = "pe-collector-dlq"
+
 [[queues.consumers]]
 queue = "pe-processor"
 max_batch_size = 10
+max_retries = 3
+dead_letter_queue = "pe-processor-dlq"
+
+[[queues.consumers]]
+queue = "pe-publisher"
+max_batch_size = 10
+max_retries = 3
+dead_letter_queue = "pe-publisher-dlq"
 
 # ---------- Environment Variables ----------
-# ध्यान दें: हमने [vars] और सभी खाली Secrets को यहाँ से हटा दिया है।
-# अब GitHub डिप्लॉयमेंट आपके क्लाउडफ्लेयर डैशबोर्ड के सीक्रेट्स को कभी नहीं मिटाएगा।
+# Secrets (MASTER_TOKEN, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, etc.) manually
+# Cloudflare dashboard se ya `wrangler secret put` se daale jaayenge.
