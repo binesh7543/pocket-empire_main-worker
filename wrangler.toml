@@ -5,7 +5,7 @@
 # ============================================================
 
 name = "pocket-empire"
-main = "src/main.js"                     # <--- यह बदला है (पहले worker.js था)
+main = "src/main.js"                     
 compatibility_date = "2024-01-01"
 
 # ---------- D1 Database ----------
@@ -15,12 +15,10 @@ database_name = "pocket-empire-db"
 database_id = "ab478d5b-d012-44e1-a1ca-71af8b202f9e"
 
 # ---------- Workers AI ----------
-# ध्यान दें: [ai] सही है, [[ai]] नहीं (Cloudflare Workers AI binding)
 [ai]
 binding = "AI"
 
 # ---------- Queue Producers ----------
-# तीनों queues के लिए producer bindings (सभी उपयोग में नहीं, भविष्य के लिए)
 [[queues.producers]]
 binding = "PE_COLLECTOR"
 queue = "pe-collector"
@@ -34,23 +32,10 @@ binding = "PE_PUBLISHER"
 queue = "pe-publisher"
 
 # ---------- Queue Consumer ----------
-# केवल PE_PROCESSOR queue consume होती है
 [[queues.consumers]]
 queue = "pe-processor"
 max_batch_size = 10
 
 # ---------- Environment Variables ----------
-# सभी secrets को wrangler secret put से सेट करें
-[vars]
-MASTER_TOKEN = ""
-TELEGRAM_TOKEN = ""
-TELEGRAM_CHAT_ID = ""
-APPS_SCRIPT_URL = ""
-GROQ_API_KEY = ""
-OPENROUTER_API_KEY = ""
-UNSPLASH_ACCESS_KEY = ""   # वर्तमान में उपयोग नहीं, रखा गया है
-MARKETAUX_API_KEY = ""
-
-# ============================================================
-# End of wrangler.toml
-# ============================================================
+# ध्यान दें: हमने [vars] और सभी खाली Secrets को यहाँ से हटा दिया है।
+# अब GitHub डिप्लॉयमेंट आपके क्लाउडफ्लेयर डैशबोर्ड के सीक्रेट्स को कभी नहीं मिटाएगा।
