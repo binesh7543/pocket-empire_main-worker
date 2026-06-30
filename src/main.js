@@ -1,7 +1,6 @@
 // ============================================================
 // FILE: src/main.js
-// VERSION: 1.0.0
-// Pocket Empire v5 — Main Engine
+// VERSION: 1.2.0 (added /telegram/webhook)
 // ============================================================
 
 import { Hono } from 'hono';
@@ -17,8 +16,9 @@ import logsRoutes from './routes/logs.js';
 import { processRun } from './pipeline.js';
 import { logAudit } from './db.js';
 import { sendTelegram } from './utils.js';
+import { json } from './utils.js';
+import { telegramWebhook } from './telegram.js';   // ← ADD THIS IMPORT
 
-// ─── HONO APP SETUP ──────────────────────────────────────────
 const app = new Hono();
 
 // Global middlewares
@@ -37,23 +37,49 @@ app.onError(async (err, c) => {
   return c.json({ error: 'Internal Server Error', requestId, message: err.message }, 500);
 });
 
-// ─── ROUTES ───────────────────────────────────────────────────
+// Routes
 app.route('/health', healthRoutes);
 app.use('/admin/*', authMiddleware);
 app.route('/admin', adminRoutes);
 app.route('/admin', pendingRoutes);
 app.route('/admin', logsRoutes);
-app.post('/run', authMiddleware, validate(RunSchema), trigger);
 
-// ─── EXPORT DEFAULT (fetch, queue, scheduled) ──────────────
+// Run route (with emergency stop check)
+app.post('/run', authMiddleware, validate(RunSchema), async (c, next) => {
+  const env = c.env;
+  const emergency = await env.PE_MEMORY?.get('emergency_stop');
+  if (emergency === 'true') {
+    return c.json({ error: 'System is in emergency stop mode. Use /emergency-resume to restart.' }, 503);
+  }
+  await next();
+}, trigger);
+
+// ─── TELEGRAM WEBHOOK ROUTE ──────────────────────────────────
+app.post('/telegram/webhook', telegramWebhook);   // ← ADD THIS ROUTE
+
+// ─── EXPORT ──────────────────────────────────────────────────
 export default {
   fetch: app.fetch,
 
-  // ─── QUEUE CONSUMER ──────────────────────────────────────
   async queue(batch, env) {
     console.log(`[Queue] Received ${batch.messages.length} message(s)`);
     for (const msg of batch.messages) {
       try {
+        const emergency = await env.PE_MEMORY?.get('emergency_stop');
+        if (emergency === 'true') {
+          console.log('[Queue] Skipping – emergency stop active');
+          msg.ack();
+          continue;
+        }
+
+        if (msg.retryCount >= 2) {
+          console.error(`[Queue] Max retries exhausted for ${msg.id}.`);
+          await logAudit(env, 'SYSTEM', 'QUEUE_MAX_RETRY', `msgId=${msg.id}, body=${JSON.stringify(msg.body)}`);
+          await sendTelegram(env, `❌ Queue message failed after 2 retries.\nID: ${msg.id}\nBody: ${JSON.stringify(msg.body)}`);
+          msg.ack();
+          continue;
+        }
+
         const data = msg.body;
         console.log(`[Queue] Processing message:`, JSON.stringify(data));
         if (data.type === 'RUN') {
@@ -65,17 +91,21 @@ export default {
       } catch (e) {
         console.error(`[Queue] Error processing message:`, e);
         await logAudit(env, 'SYSTEM', 'QUEUE_ERROR', e.message);
-        msg.retry();
+        // will retry automatically
       }
     }
   },
 
-  // ─── SCHEDULED CRON (Daily 2:00 AM IST) ──────────────────
   async scheduled(event, env, ctx) {
     console.log('[Cron] Starting scheduled job...');
+    const emergency = await env.PE_MEMORY?.get('emergency_stop');
+    if (emergency === 'true') {
+      console.log('[Cron] Skipped – emergency stop active');
+      return;
+    }
+
     const today = new Date().toISOString().slice(0, 10);
     try {
-      // 1. Check pending posts for today
       const pendingRows = await env.DB.prepare(
         "SELECT * FROM pending_posts WHERE status='pending' AND target_date = ?"
       ).bind(today).all();
@@ -84,13 +114,11 @@ export default {
       if (pending.length > 0) {
         console.log(`[Cron] Found ${pending.length} pending posts for ${today}`);
         for (const post of pending) {
-          // Fetch admin tone
           const adminRow = await env.DB.prepare(
             "SELECT * FROM admins WHERE admin_id = ?"
           ).bind(post.admin_id).first();
           const tone = adminRow?.tone || 'hinglish';
-          
-          // Trigger run
+
           await processRun({
             run_id: `CRON-${Date.now()}-${post.id}`,
             admin_id: post.admin_id,
@@ -102,7 +130,6 @@ export default {
         }
         await logAudit(env, 'SYSTEM', 'CRON_PENDING_TRIGGERED', `count=${pending.length}`);
       } else {
-        // 2. No pending → default run
         console.log('[Cron] No pending posts, running default');
         await processRun({
           run_id: `CRON-${Date.now()}`,
