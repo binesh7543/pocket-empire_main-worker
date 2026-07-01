@@ -26,9 +26,36 @@ binding = "PE_KV"
 id = "6675b10e8b614e1ab5e4f7661f94a07e"
 
 # ---------- Queue Producers ----------
+[[queues.producers]]
+binding = "PE_COLLECTOR"
+queue = "pe-collector"
+
+[[queues.producers]]
+binding = "PE_PROCESSOR"
+queue = "pe-processor"
+
+[[queues.producers]]
+binding = "PE_PUBLISHER"
+queue = "pe-publisher"
 
 # ---------- Queue Consumers ----------
+[[queues.consumers]]
+queue = "pe-collector"
+max_batch_size = 10
+max_retries = 3
+dead_letter_queue = "pe-collector-dlq"
 
+[[queues.consumers]]
+queue = "pe-processor"
+max_batch_size = 10
+max_retries = 3
+dead_letter_queue = "pe-processor-dlq"
+
+[[queues.consumers]]
+queue = "pe-publisher"
+max_batch_size = 10
+max_retries = 3
+dead_letter_queue = "pe-publisher-dlq"
 # ---------- Environment Variables ----------
 # Secrets (MASTER_TOKEN, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, etc.) manually
 # Cloudflare dashboard se ya `wrangler secret put` se daale jaayenge.
