@@ -1,14 +1,7 @@
 /**
- * Pocket Empire v5.1 — index.js
+ * Pocket Empire v5.2 — index.js
  * Stack: Hono.js + Zod
- * Role: SIRF chat ID gate + dispatcher ko forward karna.
- *
- * YAH FILE KABHI EDIT NAHI HOGI.
- * Naya route/file add karna ho to sirf dispatcher.js me karo.
- *
- * ENV VARS REQUIRED:
- *  - TELEGRAM_CHAT_ID   : authorized chat ID
- *  - TELEGRAM_BOT_TOKEN : gate-level error report ke liye
+ * Role: Telegram webhook receive → 200 OK immediately → background processing.
  */
 
 import { Hono } from "hono";
@@ -29,88 +22,128 @@ const app = new Hono();
 
 app.post("/", async (c) => {
   const env = c.env;
+
+  // Body sirf ek baar read karo
+  let body = {};
+  try {
+    body = await c.req.json();
+  } catch (_) {}
+
+  // Telegram ko turant OK de do
+  c.executionCtx.waitUntil(processWebhook(c, env, body));
+
+  return new Response("OK", {
+    status: 200,
+    headers: {
+      "Content-Type": "text/plain",
+    },
+  });
+});
+
+// ── Background Processing ───────────────────────────────────
+async function processWebhook(c, env, body) {
   let chatId = null;
 
   try {
-    // ── STEP 1: Parse + Zod validate ──────────────────────
-    let body = {};
-    try { body = await c.req.json(); } catch (_) {}
-
+    // ── STEP 1: Parse + Validate ───────────────────────────
     const parsed = TelegramSchema.safeParse(body);
 
     if (!parsed.success || !parsed.data.message) {
       console.log("PE-GW-ERR-000: Invalid payload");
-      await tgReport(env, "🛑 *Gate Rejected* [PE-GW-ERR-000]\nInvalid payload structure");
-      return c.json({ success: false, code: "PE-GW-ERR-000" }, 400);
+
+      await tgReport(
+        env,
+        "🛑 *Gate Rejected* [PE-GW-ERR-000]\nInvalid payload structure"
+      );
+
+      return;
     }
 
     chatId = parsed.data.message.chat.id.toString();
     const text = parsed.data.message.text.trim();
 
-    console.log("PE-GW-001: Incoming", { chatId, text });
+    console.log("PE-GW-001: Incoming", {
+      chatId,
+      text,
+    });
 
     // ── STEP 2: Chat ID Gate ───────────────────────────────
     if (chatId !== env.TELEGRAM_CHAT_ID) {
       console.log("PE-GW-ERR-001: Unauthorized chat ID", chatId);
-      await tgReport(env,
-        `🛑 *Gate Rejected* [PE-GW-ERR-001]\nUnauthorized Chat ID: ${chatId}\nMessage: ${text}`
+
+      await tgReport(
+        env,
+        `🛑 *Gate Rejected* [PE-GW-ERR-001]
+Unauthorized Chat ID: ${chatId}
+Message: ${text}`
       );
-      return c.json({ success: false, code: "PE-GW-ERR-001" }, 401);
+
+      return;
     }
 
-    // ── STEP 3: dispatcher.js ko forward ──────────────────
-    // Index ka kaam yahan khatam. Aage sab dispatcher sambhalega.
+    // ── STEP 3: Dispatcher ────────────────────────────────
     console.log("PE-GW-002: Chat ID OK, forwarding to dispatcher");
-    return await dispatch(c, env, { chatId, text, body });
+
+    await dispatch(c, env, {
+      chatId,
+      text,
+      body,
+    });
 
   } catch (err) {
     console.log("PE-GW-ERR-099: Gate exception", err.message);
-    await tgReport(env,
-      `🚨 *Gateway ERROR* [PE-GW-ERR-099]\nChat ID: ${chatId || "N/A"}\nError: ${err.message}`
-    );
-    return c.json({ success: false, code: "PE-GW-ERR-099", error: err.message }, 500);
-  }
-});
 
+    await tgReport(
+      env,
+      `🚨 *Gateway ERROR* [PE-GW-ERR-099]
+Chat ID: ${chatId || "N/A"}
+Error: ${err.message}`
+    );
+  }
+  // ── Export ──────────────────────────────────────────────────
 export default {
-  // ── Fetch handler (Telegram webhook + all HTTP requests) ──
+  // Telegram Webhook
   async fetch(request, env, ctx) {
     return app.fetch(request, env, ctx);
   },
 
-  // ── Queue handler (placeholder) ───────────────────────────
-  // Abhi kuch nahi karta. Jab queue.js banegi tab
-  // sirf us file ka call yahan add hoga, baaki sab same rahega.
-  // Bindings available via env:
-  //  - env.PE_KV     : KV Namespace
-  //  - env.DB        : D1 Database
-  //  - env.AI        : Workers AI
-  //  - env.PE_COLLECTOR / PE_PROCESSOR / PE_PUBLISHER : Queues
+  // Queue placeholder
   async queue(batch, env) {
     console.log("PE-QU-000: Queue batch received, no handler yet", {
       queue: batch.queue,
       size: batch.messages.length,
     });
-    // Future: queue handler file yahan call hogi
-    // Example: const { handleQueue } = await import("./queue.js");
-    //          await handleQueue(batch, env);
+
+    // Future:
+    // const { handleQueue } = await import("./queue.js");
+    // await handleQueue(batch, env);
   },
 };
 
-// ── Gate-level Telegram report (sirf gate errors ke liye) ──
+// ── Gate-level Telegram report ──────────────────────────────
 async function tgReport(env, message) {
   try {
-    if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
-    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: env.TELEGRAM_CHAT_ID,
-        text: message,
-        parse_mode: "Markdown",
-      }),
-    });
+    if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) {
+      return;
+    }
+
+    await fetch(
+      `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          chat_id: env.TELEGRAM_CHAT_ID,
+          text: message,
+          parse_mode: "Markdown",
+        }),
+      }
+    );
+
   } catch (e) {
     console.log("PE-GW-TG-ERR:", e.message);
   }
+}
 }
