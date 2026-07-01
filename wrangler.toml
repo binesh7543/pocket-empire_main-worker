@@ -26,17 +26,6 @@ binding = "PE_KV"
 id = "6675b10e8b614e1ab5e4f7661f94a07e"
 
 # ---------- Queue Producers ----------
-[[queues.producers]]
-binding = "PE_COLLECTOR"
-queue = "pe-collector"
-
-[[queues.producers]]
-binding = "PE_PROCESSOR"
-queue = "pe-processor"
-
-[[queues.producers]]
-binding = "PE_PUBLISHER"
-queue = "pe-publisher"
 
 # ---------- Queue Consumers ----------
 
