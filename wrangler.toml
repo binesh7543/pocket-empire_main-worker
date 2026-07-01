@@ -23,7 +23,7 @@ binding = "AI"
 # NOTE: Apna actual KV namespace ID yahan daalna (currently placeholder).
 [[kv_namespaces]]
 binding = "PE_KV"
-id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+id = "6675b10e8b614e1ab5e4f7661f94a07e"
 
 # ---------- Queue Producers ----------
 [[queues.producers]]
