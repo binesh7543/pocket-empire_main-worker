@@ -39,23 +39,6 @@ binding = "PE_PUBLISHER"
 queue = "pe-publisher"
 
 # ---------- Queue Consumers ----------
-[[queues.consumers]]
-queue = "pe-collector"
-max_batch_size = 10
-max_retries = 3
-dead_letter_queue = "pe-collector-dlq"
-
-[[queues.consumers]]
-queue = "pe-processor"
-max_batch_size = 10
-max_retries = 3
-dead_letter_queue = "pe-processor-dlq"
-
-[[queues.consumers]]
-queue = "pe-publisher"
-max_batch_size = 10
-max_retries = 3
-dead_letter_queue = "pe-publisher-dlq"
 
 # ---------- Environment Variables ----------
 # Secrets (MASTER_TOKEN, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, etc.) manually
