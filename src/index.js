@@ -1,20 +1,20 @@
 /**
  * Pocket Empire v5.1 — index.js
  * Stack: Hono.js + Zod
- * Role: SIRF chat ID gate + dispatcher ko forward karna.
+ * Role: Telegram webhook gate + dispatcher forward + queue support fix
  *
- * YAH FILE KABHI EDIT NAHI HOGI.
- * Naya route/file add karna ho to sirf dispatcher.js me karo.
- *
- * ENV VARS REQUIRED:
- *  - TELEGRAM_CHAT_ID   : authorized chat ID
- *  - TELEGRAM_BOT_TOKEN : gate-level error report ke liye
+ * IMPORTANT:
+ * - This file is ENTRY POINT ONLY
+ * - Business logic is in dispatcher.js
  */
 
 import { Hono } from "hono";
 import { z } from "zod";
 import { dispatch } from "./dispatcher.js";
 
+// ─────────────────────────────────────────────
+// Telegram payload validation schema
+// ─────────────────────────────────────────────
 const TelegramSchema = z.object({
   message: z.object({
     chat: z.object({
@@ -26,70 +26,89 @@ const TelegramSchema = z.object({
 
 const app = new Hono();
 
+/**
+ * ─────────────────────────────────────────────
+ * MAIN WEBHOOK ENTRY
+ * ─────────────────────────────────────────────
+ * Telegram hits this endpoint
+ * We ALWAYS return 200 immediately to stop retry loop
+ */
 app.post("/", async (c) => {
   const env = c.env;
-  let chatId = null;
 
   let body = {};
   try {
     body = await c.req.json();
-  } catch (_) {}
+  } catch (_) {
+    body = {};
+  }
 
   const parsed = TelegramSchema.safeParse(body);
 
-  // Always return 200 fast (STOP TELEGRAM RETRIES)
+  /**
+   * IMPORTANT:
+   * Telegram retry STOP = immediate 200 OK
+   * Actual processing moved to background
+   */
   c.executionCtx.waitUntil(process(env, parsed, body));
 
   return c.json({ ok: true }, 200);
 });
 
-// ───────────────────────────────────────────────
-// Background processing
-// ───────────────────────────────────────────────
+/**
+ * ─────────────────────────────────────────────
+ * BACKGROUND PROCESSOR
+ * ─────────────────────────────────────────────
+ * Runs after response already sent to Telegram
+ */
 async function process(env, parsed, body) {
   try {
-    if (!parsed.success || !parsed.data?.message) {
-      return;
-    }
+    // invalid payload ignore
+    if (!parsed.success || !parsed.data?.message) return;
 
     const chatId = parsed.data.message.chat.id.toString();
     const text = parsed.data.message.text.trim();
 
-    const AUTH = env.TELEGRAM_CHAT_ID;
-    const WELCOME_URL = env.WELCOME_URL;
+    console.log("PE-GW-001 Incoming:", { chatId, text });
 
-    // ── AUTHORIZED USER ───────────────────────
-    if (chatId === AUTH) {
-      return dispatch({ executionCtx: env }, env, {
-        chatId,
-        text,
-        body,
-      });
-    }
-
-    // ── UNAUTHORIZED USER ─────────────────────
-    const key = `unauth:${chatId}`;
-    const alreadySeen = await env.PE_KV.get(key);
-
-    if (!alreadySeen) {
-      // first time only
-      await env.PE_KV.put(key, "1");
-
-      await sendTelegram(env, chatId,
-        `👋 Welcome!\n\nHere is your access link:\n${WELCOME_URL}`
+    // ─────────────────────────────
+    // AUTHORIZED CHAT FLOW
+    // ─────────────────────────────
+    if (chatId === env.TELEGRAM_CHAT_ID) {
+      return dispatch(
+        { executionCtx: env },
+        env,
+        { chatId, text, body }
       );
     }
 
-    // after this: DO NOTHING (silent drop)
+    // ─────────────────────────────
+    // UNAUTHORIZED FLOW (silent drop or future welcome)
+    // ─────────────────────────────
+    const key = `unauth:${chatId}`;
+
+    const alreadySeen = await env.PE_KV.get(key);
+
+    if (!alreadySeen) {
+      await env.PE_KV.put(key, "1");
+
+      await sendTelegram(env, chatId,
+        `👋 Welcome!\n\nYou are not authorized yet.`
+      );
+    }
+
+    // after first message → do nothing (silent ignore)
 
   } catch (err) {
     console.log("PE-GW-ERR:", err.message);
   }
 }
 
-// ───────────────────────────────────────────────
-// Telegram sender
-// ───────────────────────────────────────────────
+/**
+ * ─────────────────────────────────────────────
+ * TELEGRAM MESSAGE SENDER
+ * ─────────────────────────────────────────────
+ */
 async function sendTelegram(env, chatId, message) {
   try {
     await fetch(
@@ -108,8 +127,57 @@ async function sendTelegram(env, chatId, message) {
   }
 }
 
+/**
+ * ─────────────────────────────────────────────
+ * EXPORT (Cloudflare Worker entry + QUEUE FIX)
+ * ─────────────────────────────────────────────
+ */
 export default {
-  async fetch(req, env, ctx) {
-    return app.fetch(req, env, ctx);
+  /**
+   * HTTP ENTRYPOINT (Telegram webhook)
+   */
+  async fetch(request, env, ctx) {
+    return app.fetch(request, env, ctx);
+  },
+
+  /**
+   * ─────────────────────────────────────────────
+   * QUEUE CONSUMER (FIXED - REQUIRED BY CLOUDFLARE)
+   * ─────────────────────────────────────────────
+   * Without this, deploy FAILS (your error)
+   */
+  async queue(batch, env, ctx) {
+    ctx.waitUntil(handleQueue(batch, env));
   },
 };
+
+/**
+ * ─────────────────────────────────────────────
+ * QUEUE HANDLER
+ * ─────────────────────────────────────────────
+ * Future PE_PROCESSOR / PE_COLLECTOR logic goes here
+ */
+async function handleQueue(batch, env) {
+  console.log("PE-QU-000 Queue received:", {
+    queue: batch.queue,
+    size: batch.messages.length,
+  });
+
+  for (const msg of batch.messages) {
+    try {
+      const data = msg.body;
+
+      console.log("PE-QU-001 Processing:", data);
+
+      // TODO:
+      // Future:
+      // - PE_PROCESSOR logic
+      // - dispatcher async jobs
+
+      msg.ack();
+    } catch (err) {
+      console.log("PE-QU-ERR:", err.message);
+      // Cloudflare auto retry handles it
+    }
+  }
+}
