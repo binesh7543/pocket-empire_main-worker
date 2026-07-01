@@ -72,7 +72,30 @@ app.post("/", async (c) => {
   }
 });
 
-export default app;
+export default {
+  // ── Fetch handler (Telegram webhook + all HTTP requests) ──
+  async fetch(request, env, ctx) {
+    return app.fetch(request, env, ctx);
+  },
+
+  // ── Queue handler (placeholder) ───────────────────────────
+  // Abhi kuch nahi karta. Jab queue.js banegi tab
+  // sirf us file ka call yahan add hoga, baaki sab same rahega.
+  // Bindings available via env:
+  //  - env.PE_KV     : KV Namespace
+  //  - env.DB        : D1 Database
+  //  - env.AI        : Workers AI
+  //  - env.PE_COLLECTOR / PE_PROCESSOR / PE_PUBLISHER : Queues
+  async queue(batch, env) {
+    console.log("PE-QU-000: Queue batch received, no handler yet", {
+      queue: batch.queue,
+      size: batch.messages.length,
+    });
+    // Future: queue handler file yahan call hogi
+    // Example: const { handleQueue } = await import("./queue.js");
+    //          await handleQueue(batch, env);
+  },
+};
 
 // ── Gate-level Telegram report (sirf gate errors ke liye) ──
 async function tgReport(env, message) {
