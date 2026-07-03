@@ -1,15 +1,23 @@
 /**
  * Pocket Empire v5.1 — index.js
  * Stack: Hono.js + Zod
- * Role: SIRF gate + turant 200 OK + background process
+ * Role: SIRF entry point — gate + forward. Koi logic nahi.
  *
- * YAH FILE KABHI EDIT NAHI HOGI.
+ * YAH FILE DOBARA KABHI EDIT NAHI HOGI.
+ *
+ * 3 channels handle karta hai:
+ *  1. fetch    → Telegram webhook
+ *  2. queue    → Queue messages
+ *  3. scheduled → Cron triggers
+ *
+ * Teeno ke liye sirf dispatcher.js ko call karta hai.
  */
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { dispatch } from "./dispatcher.js";
+import { dispatch, dispatchQueue, dispatchCron } from "./dispatcher.js";
 
+// ── Zod Schema ──────────────────────────────────────────────
 const TelegramSchema = z.object({
   message: z.object({
     chat: z.object({
@@ -21,10 +29,11 @@ const TelegramSchema = z.object({
 
 const app = new Hono();
 
-// Dono routes handle karo — webhook reset na karna pade
+// Dono routes — webhook reset na karna pade
 app.post("/", handleWebhook);
 app.post("/telegram/webhook", handleWebhook);
 
+// ── 1. TELEGRAM WEBHOOK ─────────────────────────────────────
 async function handleWebhook(c) {
   const env = c.env;
 
@@ -34,11 +43,11 @@ async function handleWebhook(c) {
   const parsed = TelegramSchema.safeParse(body);
 
   // Turant 200 OK — Telegram retry BAND
-  c.executionCtx.waitUntil(_process(env, parsed, body));
+  c.executionCtx.waitUntil(_processTelegram(env, parsed, body));
   return c.json({ ok: true }, 200);
 }
 
-async function _process(env, parsed, body) {
+async function _processTelegram(env, parsed, body) {
   try {
     if (!parsed.success || !parsed.data?.message) return;
 
@@ -67,6 +76,7 @@ async function _process(env, parsed, body) {
   }
 }
 
+// ── Telegram sender ─────────────────────────────────────────
 async function tgReport(env, message) {
   try {
     if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
@@ -84,22 +94,25 @@ async function tgReport(env, message) {
   }
 }
 
+// ── EXPORT ──────────────────────────────────────────────────
 export default {
+  // 1. Telegram webhook
   async fetch(request, env, ctx) {
     return app.fetch(request, env, ctx);
   },
+
+  // 2. Queue messages → dispatcher
   async queue(batch, env) {
     console.log("PE-QU-000: Queue received", {
       queue: batch.queue,
       size: batch.messages.length,
     });
-    for (const msg of batch.messages) {
-      try {
-        console.log("PE-QU-001: Processing", msg.body);
-        msg.ack();
-      } catch (err) {
-        console.log("PE-QU-ERR:", err.message);
-      }
-    }
+    await dispatchQueue(batch, env);
+  },
+
+  // 3. Cron trigger → dispatcher
+  async scheduled(event, env, ctx) {
+    console.log("PE-CR-000: Cron triggered", event.cron);
+    ctx.waitUntil(dispatchCron(env, event));
   },
 };
