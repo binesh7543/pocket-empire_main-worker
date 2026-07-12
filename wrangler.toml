@@ -25,6 +25,13 @@ binding = "AI"
 binding = "PE_KV"
 id = "6675b10e8b614e1ab5e4f7661f94a07e"
 
+
+# ----------queues.producers----------
+[[queues.producers]]
+binding = "PE_REPORTER"
+queue = "pe-reporter"
+
+
 # ---------- Queue Producers ----------
 [[queues.producers]]
 binding = "PE_COLLECTOR"
