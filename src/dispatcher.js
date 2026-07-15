@@ -1,47 +1,41 @@
 /**
- * Pocket Empire v5.1 — dispatcher.js
- * Stack: Zod
- * Role: Teeno channels (Telegram, Queue, Cron) ko KV registry se route karna.
+ * Pocket Empire v5.1 — dispatcher.js (v3 — static registry + reporter.js)
+ * Role: Teeno channels (Telegram, Queue, Cron) ko FIXED mapping se route karna.
  *
- * YAH FILE DOBARA KABHI EDIT NAHI HOGI.
- *
- * KV Registry structure (PE_KV key: "registry"):
- * {
- *   "RUN": "run.js",              ← Telegram prefix
- *   "CRO": "cron.js",             ← Cron prefix
- *   "pe-collector": "market.js",  ← Queue name
- *   "pe-processor": "ai.js",      ← Queue name
- *   "pe-publisher": "publisher.js" ← Queue name
- * }
- *
- * Register karne ka format (/newf1 command):
- *   Telegram : /newf1_run.js=RUN
- *   Queue    : /newf1_market.js=pe-collector
- *   Cron     : /newf1_cron.js=CRO
+ * CHANGE LOG:
+ * - Registry ab KV se nahi, is file ke andar hardcoded hai (REGISTRY object).
+ *   Naya file add karna ho to seedha yahan entry add karo aur redeploy.
+ * - Reporting ab src/reporter.js se direct call hoti hai (single channel,
+ *   koi queue nahi). Reporter khud decide karega Telegram ko kaise bhejna hai.
  */
 
-import { z } from "zod";
+import { reporter } from "./reporter.js";
 
-// ── Zod: /newf1 format validate karne ke liye ───────────────
-const NewFileSchema = z.string().regex(
-  /^\/newf1_[a-zA-Z0-9_\-]+\.js=[a-zA-Z0-9_\-]{2,30}$/,
-  "Sahi format: /newf1_filename.js=KEY"
-);
-
-// ── KV se registry padhna ───────────────────────────────────
-async function getRegistry(env) {
-  try {
-    const raw = await env.PE_KV.get("registry");
-    return raw ? JSON.parse(raw) : {};
-  } catch (e) {
-    console.log("PE-DP-ERR-001: KV read failed", e.message);
-    return null;
-  }
+// reporter.js ka signature (payload, env) hai aur woh throw karta hai —
+// yeh wrapper order match karta hai aur error ko catch karta hai taaki
+// Telegram fail hone pe dispatcher crash na ho.
+async function report(env, message) {
+  return reporter(message, env).catch((e) =>
+    console.log("PE-DP-REPORT-ERR:", e.message)
+  );
 }
 
-// ── KV mein registry save karna ─────────────────────────────
-async function saveRegistry(env, registry) {
-  await env.PE_KV.put("registry", JSON.stringify(registry));
+// ════════════════════════════════════════════════════════════
+// FIXED REGISTRY — yahan edit karo naya file register karne ke liye
+// ════════════════════════════════════════════════════════════
+const REGISTRY = {
+  RUN: "daily-trigger.js",
+  WEE: "weekly-brief.js",
+  DEE: "deep-dive.js",
+  RES: "research-bot.js",
+  CRO: "cron.js",
+  "pe-collector": "run.js",
+  "pe-processor": "ai.js",
+  "pe-publisher": "publisher.js",
+};
+
+function getFileByTrigger(trigger) {
+  return REGISTRY[trigger] || null;
 }
 
 // ── File ka handle() call karna ─────────────────────────────
@@ -51,148 +45,69 @@ async function callFile(env, fileName, payload) {
     await module.handle(env, payload);
   } catch (err) {
     console.log(`PE-DP-ERR-099: ${fileName} call failed`, err.message);
-    await tgReport(env,
+    await report(env,
       `🚨 *Dispatcher ERROR* [PE-DP-ERR-099]\nFile: ${fileName}\nError: ${err.message}`
     );
   }
 }
 
 // ════════════════════════════════════════════════════════════
-// 1. TELEGRAM dispatch (index.js fetch handler yahi call karta hai)
+// 1. TELEGRAM dispatch
 // ════════════════════════════════════════════════════════════
 export async function dispatch(env, { chatId, text, body }) {
   try {
-    // /newf1 special command
-    if (text.startsWith("/newf1")) {
-      return await registerNewFile(env, text);
-    }
-
-    // Prefix nikalo (pehle 3 letters)
     const prefix = text.replace(/^\//, "").slice(0, 3).toUpperCase();
     console.log("PE-DP-001: Telegram prefix", prefix);
 
-    const registry = await getRegistry(env);
-    if (!registry) {
-      await tgReport(env, `🚨 *Dispatcher ERROR* [PE-DP-ERR-001]\nKV read failed`);
-      return;
-    }
-
-    if (!registry[prefix]) {
+    if (!getFileByTrigger(prefix)) {
       console.log("PE-DP-ERR-002: No file for prefix", prefix);
-      await tgReport(env,
+      await report(env,
         `🛑 *Dispatcher Rejected* [PE-DP-ERR-002]\nKoi file registered nahi: "${prefix}"\nCommand: ${text}`
       );
       return;
     }
 
-    console.log("PE-DP-002: Forwarding to", registry[prefix]);
-    await callFile(env, registry[prefix], { chatId, text, body });
+    console.log("PE-DP-002: Forwarding to", getFileByTrigger(prefix));
+    await callFile(env, getFileByTrigger(prefix), { chatId, text, body });
 
   } catch (err) {
     console.log("PE-DP-ERR-099: Telegram dispatch exception", err.message);
-    await tgReport(env,
-      `🚨 *Dispatcher ERROR* [PE-DP-ERR-099]\nError: ${err.message}`
-    );
+    await report(env, `🚨 *Dispatcher ERROR* [PE-DP-ERR-099]\nError: ${err.message}`);
   }
 }
 
 // ════════════════════════════════════════════════════════════
-// 2. QUEUE dispatch (index.js queue handler yahi call karta hai)
+// 2. QUEUE dispatch
 // ════════════════════════════════════════════════════════════
 export async function dispatchQueue(batch, env) {
   const queueName = batch.queue;
   console.log("PE-DP-010: Queue dispatch", queueName);
 
-  const registry = await getRegistry(env);
-  if (!registry) {
-    await tgReport(env, `🚨 *Dispatcher ERROR* [PE-DP-ERR-001]\nKV read failed`);
-    return;
-  }
-
-  if (!registry[queueName]) {
+  if (!getFileByTrigger(queueName)) {
     console.log("PE-DP-ERR-011: No file for queue", queueName);
-    await tgReport(env,
+    await report(env,
       `🛑 *Queue Rejected* [PE-DP-ERR-011]\nKoi file registered nahi queue ke liye: "${queueName}"`
     );
     return;
   }
 
-  console.log("PE-DP-011: Queue forwarding to", registry[queueName]);
-  await callFile(env, registry[queueName], { batch });
+  console.log("PE-DP-011: Queue forwarding to", getFileByTrigger(queueName));
+  await callFile(env, getFileByTrigger(queueName), { batch });
 }
 
 // ════════════════════════════════════════════════════════════
-// 3. CRON dispatch (index.js scheduled handler yahi call karta hai)
+// 3. CRON dispatch
 // ════════════════════════════════════════════════════════════
-export async function dispatchCron(env, event) {
-  console.log("PE-DP-020: Cron dispatch", event.cron);
+export async function dispatchCron(env, { trigger, cron }) {
+  console.log("PE-DP-020: Cron dispatch", trigger);
 
-  const registry = await getRegistry(env);
-  if (!registry) {
-    await tgReport(env, `🚨 *Dispatcher ERROR* [PE-DP-ERR-001]\nKV read failed`);
+  const file = getFileByTrigger(trigger);
+  if (!file) {
+    console.log("PE-DP-ERR-021: No file for trigger", trigger);
+    await report(env, `🛑 *Cron Rejected* [PE-DP-ERR-021]\nTrigger registered nahi: "${trigger}"`);
     return;
   }
 
-  // Cron ke liye "CRO" prefix use hoga
-  if (!registry["CRO"]) {
-    console.log("PE-DP-ERR-021: No file for cron");
-    await tgReport(env,
-      `🛑 *Cron Rejected* [PE-DP-ERR-021]\nKoi file registered nahi cron ke liye\nRegister: /newf1_cron.js=CRO`
-    );
-    return;
-  }
-
-  console.log("PE-DP-021: Cron forwarding to", registry["CRO"]);
-  await callFile(env, registry["CRO"], { cron: event.cron });
-}
-
-// ════════════════════════════════════════════════════════════
-// /newf1 HANDLER — KV mein nai file register karna
-// ════════════════════════════════════════════════════════════
-async function registerNewFile(env, text) {
-  try {
-    const validation = NewFileSchema.safeParse(text);
-    if (!validation.success) {
-      await tgReport(env,
-        `🛑 *Register Failed* [PE-DP-ERR-003]\nGalat format: ${text}\nSahi format: /newf1_filename.js=KEY`
-      );
-      return;
-    }
-
-    const withoutCmd = text.replace("/newf1_", "");
-    const [fileName, key] = withoutCmd.split("=");
-
-    const registry = await getRegistry(env) || {};
-    registry[key] = fileName;
-    await saveRegistry(env, registry);
-
-    console.log("PE-DP-005: Registry updated", registry);
-    await tgReport(env,
-      `✅ *File Registered* [PE-DP-005]\nFile: ${fileName}\nKey: ${key}\nRegistry: ${JSON.stringify(registry, null, 2)}`
-    );
-
-  } catch (err) {
-    console.log("PE-DP-ERR-098: Register exception", err.message);
-    await tgReport(env,
-      `🚨 *Register ERROR* [PE-DP-ERR-098]\nError: ${err.message}`
-    );
-  }
-}
-
-// ── Telegram report helper ──────────────────────────────────
-async function tgReport(env, message) {
-  try {
-    if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHAT_ID) return;
-    await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: env.TELEGRAM_CHAT_ID,
-        text: message,
-        parse_mode: "Markdown",
-      }),
-    });
-  } catch (e) {
-    console.log("PE-DP-TG-ERR:", e.message);
-  }
-  }
+  console.log("PE-DP-021: Cron forwarding to", file);
+  await callFile(env, file, { cron });
+              }
