@@ -24,7 +24,7 @@ async function report(env, message) {
 // FIXED REGISTRY — yahan edit karo naya file register karne ke liye
 // ════════════════════════════════════════════════════════════
 const REGISTRY = {
-  RUN: "daily-trigger.js",
+  RUN: "run.js",
   WEE: "weekly-brief.js",
   DEE: "deep-dive.js",
   RES: "research-bot.js",
