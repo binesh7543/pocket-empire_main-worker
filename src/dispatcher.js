@@ -1,14 +1,12 @@
 /**
- * Pocket Empire v5.1 — dispatcher.js (v3 — static registry + reporter.js)
- * Role: Teeno channels (Telegram, Queue, Cron) ko FIXED mapping se route karna.
+ * Pocket Empire v5.1 — dispatcher.js (v4 — static registry.js, no dynamic import)
+ * Role: Teeno channels (Telegram, Queue, Cron) ko route karna.
  *
- * CHANGE LOG:
- * - Registry ab KV se nahi, is file ke andar hardcoded hai (REGISTRY object).
- *   Naya file add karna ho to seedha yahan entry add karo aur redeploy.
- * - Reporting ab src/reporter.js se direct call hoti hai (single channel,
- *   koi queue nahi). Reporter khud decide karega Telegram ko kaise bhejna hai.
+ * YAH FILE AB STABLE HAI — naya file add karne ke liye registry.js
+ * edit karo, is file ko chhedne ki zaroorat nahi.
  */
 
+import { FILE_MAP, TRIGGERS } from "./registry.js";
 import { reporter } from "./reporter.js";
 
 // reporter.js ka signature (payload, env) hai aur woh throw karta hai —
@@ -20,29 +18,20 @@ async function report(env, message) {
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// FIXED REGISTRY — yahan edit karo naya file register karne ke liye
-// ════════════════════════════════════════════════════════════
-const REGISTRY = {
-  RUN: "run.js",
-  WEE: "weekly-brief.js",
-  DEE: "deep-dive.js",
-  RES: "research-bot.js",
-  CRO: "cron.js",
-  "pe-collector": "run.js",
-  "pe-processor": "ai.js",
-  "pe-publisher": "publisher.js",
-};
-
 function getFileByTrigger(trigger) {
-  return REGISTRY[trigger] || null;
+  return TRIGGERS[trigger] || null;
 }
 
-// ── File ka handle() call karna ─────────────────────────────
+// ── File ka handler call karna (static lookup, koi dynamic import nahi) ──
 async function callFile(env, fileName, payload) {
+  const handler = FILE_MAP[fileName];
+  if (!handler) {
+    console.log(`PE-DP-ERR-099: No handler for ${fileName}`);
+    await report(env, `🚨 *Dispatcher ERROR* [PE-DP-ERR-099]\nNo handler registered: ${fileName}`);
+    return;
+  }
   try {
-    const module = await import(`./${fileName}`);
-    await module.handle(env, payload);
+    await handler(env, payload);
   } catch (err) {
     console.log(`PE-DP-ERR-099: ${fileName} call failed`, err.message);
     await report(env,
@@ -59,7 +48,8 @@ export async function dispatch(env, { chatId, text, body }) {
     const prefix = text.replace(/^\//, "").slice(0, 3).toUpperCase();
     console.log("PE-DP-001: Telegram prefix", prefix);
 
-    if (!getFileByTrigger(prefix)) {
+    const file = getFileByTrigger(prefix);
+    if (!file) {
       console.log("PE-DP-ERR-002: No file for prefix", prefix);
       await report(env,
         `🛑 *Dispatcher Rejected* [PE-DP-ERR-002]\nKoi file registered nahi: "${prefix}"\nCommand: ${text}`
@@ -67,8 +57,8 @@ export async function dispatch(env, { chatId, text, body }) {
       return;
     }
 
-    console.log("PE-DP-002: Forwarding to", getFileByTrigger(prefix));
-    await callFile(env, getFileByTrigger(prefix), { chatId, text, body });
+    console.log("PE-DP-002: Forwarding to", file);
+    await callFile(env, file, { chatId, text, body });
 
   } catch (err) {
     console.log("PE-DP-ERR-099: Telegram dispatch exception", err.message);
@@ -83,7 +73,8 @@ export async function dispatchQueue(batch, env) {
   const queueName = batch.queue;
   console.log("PE-DP-010: Queue dispatch", queueName);
 
-  if (!getFileByTrigger(queueName)) {
+  const file = getFileByTrigger(queueName);
+  if (!file) {
     console.log("PE-DP-ERR-011: No file for queue", queueName);
     await report(env,
       `🛑 *Queue Rejected* [PE-DP-ERR-011]\nKoi file registered nahi queue ke liye: "${queueName}"`
@@ -91,8 +82,8 @@ export async function dispatchQueue(batch, env) {
     return;
   }
 
-  console.log("PE-DP-011: Queue forwarding to", getFileByTrigger(queueName));
-  await callFile(env, getFileByTrigger(queueName), { batch });
+  console.log("PE-DP-011: Queue forwarding to", file);
+  await callFile(env, file, { batch });
 }
 
 // ════════════════════════════════════════════════════════════
@@ -110,4 +101,4 @@ export async function dispatchCron(env, { trigger, cron }) {
 
   console.log("PE-DP-021: Cron forwarding to", file);
   await callFile(env, file, { cron });
-              }
+}
