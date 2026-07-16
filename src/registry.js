@@ -11,7 +11,7 @@
 
 // ── STATIC IMPORTS ────────────────────────────────────────────
 // Path us file ke actual location ka hai (registry.js se relative).
-import { handle as handleRun } from "./run/run.js";
+import { handle as handleRun } from "./run.js";
 // import { handle as handleWeeklyBrief } from "./weekly-brief.js";
 // import { handle as handleDeepDive }    from "./deep-dive.js";
 // import { handle as handleResearchBot } from "./research-bot.js";
