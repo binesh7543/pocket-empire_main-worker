@@ -31,7 +31,7 @@
  * ══════════════════════════════════════════════════════════════
  */
 
-import { reporter } from "./reporter.js";
+import { reporter } from "../reporter.js";
 
 // ─────────────────────────────────────────────────────────────
 // TARGET FILES — 4 alag worker files, ek-ek karke ready hote
