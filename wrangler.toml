@@ -70,7 +70,8 @@ enabled = true
 head_sampling_rate = 1
 
 [vars]
-RSS_FEED_URL = "https://news.google.com/rss/search?q=stock+market+india+OR+personal+finance+OR+global+markets&hl=en-IN&gl=IN&ceid=IN:en"
+RSS_FEED_URL = "https://news.google.com/rss/search?q=stock+market+india&hl=en-IN&gl=IN&ceid=IN:en
+"
 
 # ---------- Environment Variables ----------
 # Secrets (MASTER_TOKEN, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, etc.) manually
