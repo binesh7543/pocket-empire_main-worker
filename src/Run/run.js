@@ -41,7 +41,7 @@ import { reporter } from "./reporter.js";
 // JAB NAYI FILE BANE: sirf neeche wali import line ka "//" hatao,
 // aur TYPE_MAP mein bhi uski entry se "//" hatao. Bas itna hi.
 // ─────────────────────────────────────────────────────────────
-//import { handle as handleDaily } from "./daily-trigger.js";      // RUN001 — READY
+import { handle as handleDaily } from "./daily-trigger.js";      // RUN001 — READY
 // import { handle as handleWeekly }   from "./weekly-brief.js";   // RUN002 — abhi nahi bana
 // import { handle as handleDeepDive } from "./deep-dive.js";      // RUN003 — abhi nahi bana
 // import { handle as handleResearch } from "./research-bot.js";   // RUN004 — abhi nahi bana
