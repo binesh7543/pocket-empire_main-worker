@@ -49,7 +49,7 @@ import { handle as handleDaily } from "./daily-trigger.js";      // RUN001 — R
 // type string → target function. Jaise-jaise upar wali files ready
 // hongi, yahan bhi unki line uncomment karni hai.
 const TYPE_MAP = {
-  //run001: handleDaily,
+  run001: handleDaily,
   // run002: handleWeekly,
   // run003: handleDeepDive,
   // run004: handleResearch,
