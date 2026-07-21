@@ -1,11 +1,6 @@
 /**
  * ══════════════════════════════════════════════════════════════
- * news-extract.ts — Google Financial News Fetcher & Splitter
- * ══════════════════════════════════════════════════════════════
- * FIXES:
- * 1. Hardcoded Google Finance News RSS URL (Search Query: stock market OR finance)
- * 2. Complete Browser Headers (User-Agent + Sec-Ch-Ua + Accept) for 503 bypass
- * 3. 2-second Delay before Retry attempt
+ * news-extract.ts — HTML Web Scraper (No RSS, No API Key, No 503)
  * ══════════════════════════════════════════════════════════════
  */
 
@@ -13,87 +8,50 @@ import { reporter } from "../reporter.js";
 
 type Env = { [key: string]: any };
 
-// ── 1. HARDCODED FINANCIAL RSS URL ──────────────────────────
-// Yeh URL Google News se "stock market OR finance OR sensex OR nifty" ki latest English news nikalega
-const FINANCIAL_RSS_URL =
-  "https://news.google.com/rss/search?q=stock+market+OR+finance+OR+sensex+OR+nifty&hl=en-IN&gl=IN&ceid=IN:en";
+// Google News Direct Search HTML URL
+const GOOGLE_NEWS_SEARCH_URL =
+  "https://news.google.com/search?q=stock%20market%20OR%20finance%20OR%20sensex&hl=en-IN&gl=IN&ceid=IN%3Aen";
 
-// ── 2. FULL BROWSER HEADERS (To bypass Google 503 Bot detection) ──
-const BROWSER_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-  "Accept":
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.9",
-  "Cache-Control": "no-cache",
-  "Pragma": "no-cache",
-  "Sec-Ch-Ua": '"Not-A.Brand";v="99", "Chromium";v="124", "Google Chrome";v="124"',
-  "Sec-Ch-Ua-Mobile": "?0",
-  "Sec-Ch-Ua-Platform": '"Windows"',
-  "Sec-Fetch-Dest": "document",
-  "Sec-Fetch-Mode": "navigate",
-  "Sec-Fetch-Site": "none",
-  "Sec-Fetch-User": "?1",
-  "Upgrade-Insecure-Requests": "1",
-};
+// ── HTML Scraping Function ──────────────────────────────────
+async function fetchNewsViaScraping(): Promise<string> {
+  const response = await fetch(GOOGLE_NEWS_SEARCH_URL, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "Accept-Language": "en-US,en;q=0.9",
+    },
+  });
 
-// Delay helper (Retry se pehle wait karne ke liye)
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// ── 3. FETCH RSS WITH FULL HEADERS & DELAY RETRY ────────────
-async function fetchRssWithRetry(rssUrl: string, env: Env): Promise<string> {
-  try {
-    const response = await fetch(rssUrl, {
-      headers: BROWSER_HEADERS,
-      cf: { cacheTtl: 0 }, // Worker cache bypass
-    });
-
-    if (!response.ok) throw new Error(`Status ${response.status}`);
-    return await response.text();
-  } catch (firstErr: any) {
-    console.log("PE-NEWS-RETRY: First attempt failed ->", firstErr.message);
-
-    // Pehli baar fail hone par Telegram par alert
-    await reporter(
-      `⚠️ Financial RSS pehli baar fail hua (${firstErr.message}), 2 sec wait karke retry kar raha hun...`,
-      env
-    ).catch((e: Error) => console.log("PE-NEWS-REPORT-ERR:", e.message));
-
-    // 2 second ka gap dena zaroori hai (Google IP throttle cool down)
-    await delay(2000);
-
-    const retryResponse = await fetch(rssUrl, {
-      headers: BROWSER_HEADERS,
-      cf: { cacheTtl: 0 },
-    });
-
-    if (!retryResponse.ok)
-      throw new Error(`Retry bhi fail: Status ${retryResponse.status}`);
-    return await retryResponse.text();
-  }
-}
-
-// ── 4. RSS PARSE & EXTRACT 1 FINANCIAL NEWS ─────────────────
-async function fetchOneNews(rssUrl: string, env: Env): Promise<{ title: string }> {
-  const xmlText = await fetchRssWithRetry(rssUrl, env);
-
-  const { XMLParser } = await import("fast-xml-parser");
-  const parser = new XMLParser({ ignoreAttributes: false });
-  const result = parser.parse(xmlText);
-  const items = result?.rss?.channel?.item || [];
-
-  if (items.length === 0) {
-    throw new Error("Financial RSS mein koi news nahi mili");
+  if (!response.ok) {
+    throw new Error(`Google Search HTML Status: ${response.status}`);
   }
 
-  const first = Array.isArray(items) ? items[0] : items;
-  return { title: first.title || "" };
+  const html = await response.text();
+
+  // HTML mein se news title nikalne ke liye RegEx pattern
+  const titleMatches = html.match(/<a[^>]*class="JtA2fe"[^>]*>(.*?)<\/a>/gi) || 
+                       html.match(/<h3[^>]*>(.*?)<\/h3>/gi) ||
+                       html.match(/class="gPFMg"[^>]*>(.*?)<\/a>/gi);
+
+  if (!titleMatches || titleMatches.length === 0) {
+    // Backup: Tag Clean Text search
+    const cleanTitles = html.match(/>([^<]{20,120})<\/a>/g);
+    if (cleanTitles && cleanTitles.length > 5) {
+      return cleanTitles[5].replace(/[><]/g, "").trim();
+    }
+    throw new Error("HTML se news title extract nahi ho paya");
+  }
+
+  // Pehle match se HTML tags hatana
+  const firstRawTitle = titleMatches[0];
+  const cleanTitle = firstRawTitle.replace(/<[^>]*>/g, "").trim();
+
+  return cleanTitle;
 }
 
-// ── 5. TITLE SPLIT LOGIC ────────────────────────────────────
+// ── Title Split Logic ───────────────────────────────────────
 function splitIntoTwoPieces(title: string): { part1: string; part2: string } {
-  // Google News ke title ke aage source hota hai (e.g., "Sensex jumps 500 pts - Economic Times")
-  // Pehle use clean kar lete hain
   const cleanTitle = title.split(" - ")[0].trim();
 
   const connectors = /\b(amid|as|after|due to|on|following|jumps|falls|rises|slumps)\b/i;
@@ -113,23 +71,22 @@ function splitIntoTwoPieces(title: string): { part1: string; part2: string } {
   };
 }
 
-// ── 6. MAIN HANDLER ─────────────────────────────────────────
+// ── MAIN HANDLER ─────────────────────────────────────────────
 export async function handle(env: Env): Promise<void> {
   try {
-    // Ab env.RSS_FEED_URL ki zaroorat nahi hai, hardcoded FINANCIAL_RSS_URL use hoga
-    const { title } = await fetchOneNews(FINANCIAL_RSS_URL, env);
+    const title = await fetchNewsViaScraping();
     const { part1, part2 } = splitIntoTwoPieces(title);
 
-    console.log("PE-NEWS-001: Financial Split Done", { full: title, part1, part2 });
+    console.log("PE-NEWS-001: Scraping Success", { full: title, part1, part2 });
 
     await reporter(
-      `📊 *Financial News Extract*\n\n*Full Title:* ${title}\n\n🔹 *Part 1:* ${part1}\n🔹 *Part 2:* ${part2}`,
+      `📊 *Financial News (Scraper)*\n\n*Full Title:* ${title}\n\n🔹 *Part 1:* ${part1}\n🔹 *Part 2:* ${part2}`,
       env
     ).catch((e: Error) => console.log("PE-NEWS-REPORT-ERR:", e.message));
 
   } catch (err: any) {
     console.log("PE-NEWS-ERR-099:", err.message);
-    await reporter(`🚨 news-extract.ts failed\nError: ${err.message}`, env)
+    await reporter(`🚨 news-extract.ts (Scraper) failed\nError: ${err.message}`, env)
       .catch((e: Error) => console.log("PE-NEWS-REPORT-ERR:", e.message));
   }
 }
