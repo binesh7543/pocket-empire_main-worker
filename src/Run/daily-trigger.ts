@@ -9,7 +9,7 @@
  * ══════════════════════════════════════════════════════════════
  */
 
-import { reporter } from "./reporter.js";
+import { reporter } from "../reporter.js";
 
 type Env = { RSS_FEED_URL: string; [key: string]: any };
 
