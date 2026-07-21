@@ -71,7 +71,6 @@ head_sampling_rate = 1
 
 [vars]
 RSS_FEED_URL = "https://news.google.com/rss/search?q=stock+market+india&hl=en-IN&gl=IN&ceid=IN:en"
-
 # ---------- Environment Variables ----------
 # Secrets (MASTER_TOKEN, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, etc.) manually
 # Cloudflare dashboard se ya `wrangler secret put` se daale jaayenge.
