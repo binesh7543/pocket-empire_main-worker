@@ -2,25 +2,44 @@
  * ══════════════════════════════════════════════════════════════
  * news-extract.ts — RSS se EK news uthao, 2 tukdon mein todo
  * ══════════════════════════════════════════════════════════════
- * Kaam: RSS feed se pehla/top news item uthata hai, uske title ko
- * 2 pieces mein todta hai (Subject + Action/Context), aur seedha
- * Telegram pe push kar deta hai. Koi AI call nahi, koi word-frequency
- * logic nahi — sirf ek news, do tukde.
+ * UPDATE: User-Agent header add kiya (Google 503 de raha tha kyunki
+ * Workers ka default fetch bina User-Agent ke bot jaisa dikhta hai).
+ * Retry logic bhi add kiya — pehli baar fail ho to ek retry hota hai,
+ * aur "pehli baar fail hua tha" ka report Telegram pe jaata hai.
  * ══════════════════════════════════════════════════════════════
  */
 
-import { reporter } from "../reporter.js";
+import { reporter } from "./reporter.js";
 
 type Env = { RSS_FEED_URL: string; [key: string]: any };
 
-// ── RSS se ek news item uthana ──────────────────────────────
-async function fetchOneNews(rssUrl: string): Promise<{ title: string }> {
-  const response = await fetch(rssUrl);
-  if (!response.ok) {
-    throw new Error(`RSS fetch failed: ${response.status}`);
-  }
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-  const xmlText = await response.text();
+// ── RSS ko fetch karna, User-Agent ke saath, 1 retry ke saath ──
+async function fetchRssWithRetry(rssUrl: string, env: Env): Promise<string> {
+  try {
+    const response = await fetch(rssUrl, { headers: { "User-Agent": USER_AGENT } });
+    if (!response.ok) throw new Error(`status ${response.status}`);
+    return await response.text();
+  } catch (firstErr: any) {
+    console.log("PE-NEWS-RETRY: First attempt failed", firstErr.message);
+
+    // ── Pehli baar fail hone ka report ──
+    await reporter(`⚠️ RSS pehli baar fail hua, retry kar raha hun\nError: ${firstErr.message}`, env)
+      .catch((e: Error) => console.log("PE-NEWS-REPORT-ERR:", e.message));
+
+    // ── Ek retry ──
+    const retryResponse = await fetch(rssUrl, { headers: { "User-Agent": USER_AGENT } });
+    if (!retryResponse.ok) throw new Error(`Retry bhi fail: status ${retryResponse.status}`);
+    return await retryResponse.text();
+  }
+}
+
+// ── RSS se ek news item uthana ──────────────────────────────
+async function fetchOneNews(rssUrl: string, env: Env): Promise<{ title: string }> {
+  const xmlText = await fetchRssWithRetry(rssUrl, env);
+
   const { XMLParser } = await import("fast-xml-parser");
   const parser = new XMLParser({ ignoreAttributes: false });
   const result = parser.parse(xmlText);
@@ -30,14 +49,11 @@ async function fetchOneNews(rssUrl: string): Promise<{ title: string }> {
     throw new Error("RSS mein koi news nahi mili");
   }
 
-  // ── Sirf PEHLA/TOP news item uthao ──
   const first = Array.isArray(items) ? items[0] : items;
   return { title: first.title || "" };
 }
 
 // ── Title ko 2 tukdon mein todna ────────────────────────────
-// Common connector words (amid/as/after/on/due to) pe split karta hai.
-// Agar koi connector nahi mila, to 50-50 word-count split karta hai.
 function splitIntoTwoPieces(title: string): { part1: string; part2: string } {
   const connectors = /\b(amid|as|after|due to|on|following)\b/i;
   const match = title.match(connectors);
@@ -48,7 +64,6 @@ function splitIntoTwoPieces(title: string): { part1: string; part2: string } {
     return { part1, part2 };
   }
 
-  // Fallback: connector nahi mila to beech se todo
   const words = title.split(" ");
   const mid = Math.ceil(words.length / 2);
   return {
@@ -60,7 +75,7 @@ function splitIntoTwoPieces(title: string): { part1: string; part2: string } {
 // ── MAIN — RSS → 1 news → 2 tukde → Telegram push ───────────
 export async function handle(env: Env): Promise<void> {
   try {
-    const { title } = await fetchOneNews(env.RSS_FEED_URL);
+    const { title } = await fetchOneNews(env.RSS_FEED_URL, env);
     const { part1, part2 } = splitIntoTwoPieces(title);
 
     console.log("PE-NEWS-001: Split done", { part1, part2 });
