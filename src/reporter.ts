@@ -1,67 +1,63 @@
 /**
  * ==========================================================
- * Pocket Empire - Reporter v2 (TypeScript)
+ * Pocket Empire - Reporter v3 (Self‑healing)
  * ----------------------------------------------------------
  * Purpose:
- *   Receive reporting payload and send it to Telegram.
- * Environment:
- *   TELEGRAM_BOT_TOKEN
- *   TELEGRAM_CHAT_ID
- * No hardcoded values.
+ *   Send notifications to Telegram. If `env` is not passed,
+ *   it automatically fetches from globalThis.__ENV (set in
+ *   the entry file). This makes it robust against callers
+ *   forgetting to pass env.
  * ==========================================================
  */
 
-// Define the expected environment interface
 export interface Env {
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_CHAT_ID: string;
 }
 
 /**
- * Sends a message to Telegram using the provided payload and environment variables.
- * 
- * @param payload - Can be a string or any JSON-serializable object.
- * @param env - The environment object containing TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.
- * @returns The JSON response from Telegram API.
- * @throws Will throw a detailed error if:
- *  - `env` is missing,
- *  - required env vars are missing,
- *  - Telegram API returns a non-OK response,
- *  - network errors occur,
- *  - response is not valid JSON.
+ * Sends a message to Telegram.
+ * @param payload - string or JSON-serializable object
+ * @param env - optional, if not provided, uses globalThis.__ENV
+ * @returns Telegram API response or { ok: false, error: string }
  */
 export async function reporter(payload: unknown, env?: Env): Promise<any> {
   // ---------------------------------------------------------
-  // 1. Bulletproof Parameter Checking
+  // 1. ENV – पहले parameter, फिर global fallback
   // ---------------------------------------------------------
-  if (!env) {
-    const error = new Error(
-      "⚠️ Pocket Empire Reporter (reporter.ts) Error Report:\n" +
-      "- Called function did not provide mandatory parameter [env].\n" +
-      "- Status: Message sending failed."
-    );
-    // The stack trace helps identify which file called reporter without env
-    throw error;
-  }
-
-  if (!env.TELEGRAM_BOT_TOKEN) {
-    throw new Error(
-      "⚠️ Pocket Empire Reporter (reporter.ts) Error Report:\n" +
-      "- Called function did not provide mandatory parameter [TELEGRAM_BOT_TOKEN].\n" +
-      "- Status: Message sending failed."
-    );
-  }
-
-  if (!env.TELEGRAM_CHAT_ID) {
-    throw new Error(
-      "⚠️ Pocket Empire Reporter (reporter.ts) Error Report:\n" +
-      "- Called function did not provide mandatory parameter [TELEGRAM_CHAT_ID].\n" +
-      "- Status: Message sending failed."
-    );
+  let resolvedEnv = env;
+  if (!resolvedEnv) {
+    // Try to get from global (set by entry file)
+    const globalEnv = (globalThis as any).__ENV as Env | undefined;
+    if (globalEnv) {
+      resolvedEnv = globalEnv;
+      console.warn("⚠️ reporter: env not passed, using globalThis.__ENV");
+    } else {
+      // No env at all – log error and return gracefully, don't throw
+      const errorMsg =
+        "❌ reporter: No env provided and no globalThis.__ENV found. " +
+        "Please set globalThis.__ENV in your entry file or pass env explicitly.";
+      console.error(errorMsg);
+      return { ok: false, error: errorMsg };
+    }
   }
 
   // ---------------------------------------------------------
-  // 2. Message Formatting (supports string or object)
+  // 2. Validate required fields
+  // ---------------------------------------------------------
+  if (!resolvedEnv.TELEGRAM_BOT_TOKEN) {
+    const err = "❌ reporter: TELEGRAM_BOT_TOKEN missing in env";
+    console.error(err);
+    return { ok: false, error: err };
+  }
+  if (!resolvedEnv.TELEGRAM_CHAT_ID) {
+    const err = "❌ reporter: TELEGRAM_CHAT_ID missing in env";
+    console.error(err);
+    return { ok: false, error: err };
+  }
+
+  // ---------------------------------------------------------
+  // 3. Prepare message
   // ---------------------------------------------------------
   let message: string;
   if (typeof payload === "string") {
@@ -70,38 +66,30 @@ export async function reporter(payload: unknown, env?: Env): Promise<any> {
     try {
       message = JSON.stringify(payload, null, 2);
     } catch {
-      // Fallback if payload cannot be stringified
       message = String(payload);
     }
   }
 
   // ---------------------------------------------------------
-  // 3. Prepare Telegram API Request
+  // 4. Send to Telegram
   // ---------------------------------------------------------
-  const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
-
+  const url = `https://api.telegram.org/bot${resolvedEnv.TELEGRAM_BOT_TOKEN}/sendMessage`;
   let response: Response;
   try {
     response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: env.TELEGRAM_CHAT_ID,
+        chat_id: resolvedEnv.TELEGRAM_CHAT_ID,
         text: message,
       }),
     });
   } catch (fetchError: any) {
-    // Network or low‑level fetch errors
-    throw new Error(
-      `⚠️ Pocket Empire Reporter (reporter.ts) Error Report:\n` +
-      `- Network error or failed to reach Telegram API.\n` +
-      `- Error details: ${fetchError?.message ?? String(fetchError)}`
-    );
+    const err = `❌ reporter: Network error - ${fetchError?.message ?? String(fetchError)}`;
+    console.error(err);
+    return { ok: false, error: err };
   }
 
-  // ---------------------------------------------------------
-  // 4. Detailed Telegram API Error Handling
-  // ---------------------------------------------------------
   if (!response.ok) {
     let errorBody = "";
     try {
@@ -109,25 +97,18 @@ export async function reporter(payload: unknown, env?: Env): Promise<any> {
     } catch {
       errorBody = "Unable to read response body";
     }
-    throw new Error(
-      `⚠️ Pocket Empire Reporter (reporter.ts) Error Report:\n` +
-      `- Telegram API returned HTTP ${response.status}.\n` +
-      `- Error body: ${errorBody}`
-    );
+    const err = `❌ reporter: Telegram API HTTP ${response.status} - ${errorBody}`;
+    console.error(err);
+    return { ok: false, error: err };
   }
 
-  // ---------------------------------------------------------
-  // 5. Parse and Return JSON Response
-  // ---------------------------------------------------------
+  // Success
   try {
     return await response.json();
   } catch {
-    // In case Telegram returns non‑JSON (should not happen, but defensive)
     const text = await response.text();
-    throw new Error(
-      `⚠️ Pocket Empire Reporter (reporter.ts) Error Report:\n` +
-      `- Telegram API response was not valid JSON.\n` +
-      `- Response text: ${text}`
-    );
+    const err = `❌ reporter: Invalid JSON response - ${text}`;
+    console.error(err);
+    return { ok: false, error: err };
   }
 }
