@@ -1,6 +1,6 @@
-import { reportMessage } from '../reporter.js';
+import { reporter as reportMessage } from '../reporter.js';
 
-export async function handleDailyTrigger(incomingMessage: any): Promise<void> {
+export async function handle(incomingMessage: any): Promise<void> {
   console.log('[daily-trigger] मैसेज प्राप्त हुआ, ट्रांसफर कर रहे हैं...');
 
   try {
