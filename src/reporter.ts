@@ -1,15 +1,43 @@
 /**
  * ==========================================================
- * Pocket Empire - Reporter v3 (Self‑healing)
+ * Pocket Empire - Reporter v4 (Strict Parameters, No Crashes)
  * ----------------------------------------------------------
- * Purpose:
- *   Send notifications to Telegram. If `env` is not passed,
- *   it automatically fetches from globalThis.__ENV (set in
- *   the entry file). This makes it robust against callers
- *   forgetting to pass env.
+ * PURPOSE:
+ *   Send notifications to Telegram. This function is designed
+ *   to be called with explicit `env` parameter (no global hacks).
+ *   If parameters are missing, it logs errors and returns a
+ *   safe response object – it NEVER throws, so the worker
+ *   remains stable.
+ *
+ * ENVIRONMENT:
+ *   The `env` object MUST contain:
+ *     - TELEGRAM_BOT_TOKEN (string)
+ *     - TELEGRAM_CHAT_ID   (string)
+ *
+ *   This `env` is typically passed from the caller (e.g., 
+ *   dispatcher.js or run.js) which receives it from the 
+ *   Cloudflare Worker's fetch/scheduled handler.
+ *
+ * MESSAGE TYPES:
+ *   The `payload` parameter can be:
+ *     - string: plain text message
+ *     - any JSON-serializable object: will be stringified
+ *       with indentation for readability.
+ *
+ * LOG PREFIXES:
+ *   This module uses "PE-REP-" prefixes for its logs to
+ *   distinguish from other modules (PE-GW-, PE-DP-, etc.).
+ *   All logs are written via console.log/console.error.
+ *
+ * RETURN VALUE:
+ *   Always returns a plain object:
+ *     On success: { ok: true, result: <Telegram API response> }
+ *     On failure: { ok: false, error: "description" }
+ *
  * ==========================================================
  */
 
+// Define the expected environment interface
 export interface Env {
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_CHAT_ID: string;
@@ -17,47 +45,39 @@ export interface Env {
 
 /**
  * Sends a message to Telegram.
- * @param payload - string or JSON-serializable object
- * @param env - optional, if not provided, uses globalThis.__ENV
- * @returns Telegram API response or { ok: false, error: string }
+ *
+ * @param payload - The message content (string or object)
+ * @param env - The environment object (required) containing
+ *              TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+ * @returns Promise<{ ok: boolean; result?: any; error?: string }>
  */
-export async function reporter(payload: unknown, env?: Env): Promise<any> {
+export async function reporter(
+  payload: unknown,
+  env: Env
+): Promise<{ ok: boolean; result?: any; error?: string }> {
   // ---------------------------------------------------------
-  // 1. ENV – पहले parameter, फिर global fallback
+  // 1. Strict Parameter Validation (no env → log & return)
   // ---------------------------------------------------------
-  let resolvedEnv = env;
-  if (!resolvedEnv) {
-    // Try to get from global (set by entry file)
-    const globalEnv = (globalThis as any).__ENV as Env | undefined;
-    if (globalEnv) {
-      resolvedEnv = globalEnv;
-      console.warn("⚠️ reporter: env not passed, using globalThis.__ENV");
-    } else {
-      // No env at all – log error and return gracefully, don't throw
-      const errorMsg =
-        "❌ reporter: No env provided and no globalThis.__ENV found. " +
-        "Please set globalThis.__ENV in your entry file or pass env explicitly.";
-      console.error(errorMsg);
-      return { ok: false, error: errorMsg };
-    }
+  if (!env) {
+    const msg = "PE-REP-001: env parameter is missing or undefined";
+    console.error(msg);
+    return { ok: false, error: msg };
+  }
+
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    const msg = "PE-REP-002: TELEGRAM_BOT_TOKEN is missing in env";
+    console.error(msg);
+    return { ok: false, error: msg };
+  }
+
+  if (!env.TELEGRAM_CHAT_ID) {
+    const msg = "PE-REP-003: TELEGRAM_CHAT_ID is missing in env";
+    console.error(msg);
+    return { ok: false, error: msg };
   }
 
   // ---------------------------------------------------------
-  // 2. Validate required fields
-  // ---------------------------------------------------------
-  if (!resolvedEnv.TELEGRAM_BOT_TOKEN) {
-    const err = "❌ reporter: TELEGRAM_BOT_TOKEN missing in env";
-    console.error(err);
-    return { ok: false, error: err };
-  }
-  if (!resolvedEnv.TELEGRAM_CHAT_ID) {
-    const err = "❌ reporter: TELEGRAM_CHAT_ID missing in env";
-    console.error(err);
-    return { ok: false, error: err };
-  }
-
-  // ---------------------------------------------------------
-  // 3. Prepare message
+  // 2. Prepare the message text from the payload
   // ---------------------------------------------------------
   let message: string;
   if (typeof payload === "string") {
@@ -65,31 +85,40 @@ export async function reporter(payload: unknown, env?: Env): Promise<any> {
   } else {
     try {
       message = JSON.stringify(payload, null, 2);
-    } catch {
+    } catch (stringifyError) {
+      // Fallback to String() if JSON.stringify fails
       message = String(payload);
+      console.warn("PE-REP-004: Payload stringify failed, using String()", stringifyError);
     }
   }
 
   // ---------------------------------------------------------
-  // 4. Send to Telegram
+  // 3. Build Telegram API URL
   // ---------------------------------------------------------
-  const url = `https://api.telegram.org/bot${resolvedEnv.TELEGRAM_BOT_TOKEN}/sendMessage`;
+  const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+
+  // ---------------------------------------------------------
+  // 4. Send the request with try-catch for network errors
+  // ---------------------------------------------------------
   let response: Response;
   try {
     response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: resolvedEnv.TELEGRAM_CHAT_ID,
+        chat_id: env.TELEGRAM_CHAT_ID,
         text: message,
       }),
     });
   } catch (fetchError: any) {
-    const err = `❌ reporter: Network error - ${fetchError?.message ?? String(fetchError)}`;
-    console.error(err);
-    return { ok: false, error: err };
+    const msg = `PE-REP-005: Network error while calling Telegram API: ${fetchError?.message ?? String(fetchError)}`;
+    console.error(msg);
+    return { ok: false, error: msg };
   }
 
+  // ---------------------------------------------------------
+  // 5. Handle HTTP error status (non-2xx) – read error body
+  // ---------------------------------------------------------
   if (!response.ok) {
     let errorBody = "";
     try {
@@ -97,18 +126,33 @@ export async function reporter(payload: unknown, env?: Env): Promise<any> {
     } catch {
       errorBody = "Unable to read response body";
     }
-    const err = `❌ reporter: Telegram API HTTP ${response.status} - ${errorBody}`;
-    console.error(err);
-    return { ok: false, error: err };
+    const msg = `PE-REP-006: Telegram API returned HTTP ${response.status} - ${errorBody}`;
+    console.error(msg);
+    return { ok: false, error: msg };
   }
 
-  // Success
+  // ---------------------------------------------------------
+  // 6. Parse JSON response – catch parsing errors
+  // ---------------------------------------------------------
+  let parsed: any;
   try {
-    return await response.json();
-  } catch {
-    const text = await response.text();
-    const err = `❌ reporter: Invalid JSON response - ${text}`;
-    console.error(err);
-    return { ok: false, error: err };
+    parsed = await response.json();
+  } catch (jsonError: any) {
+    // If response is not JSON, read as text for debugging
+    let text = "";
+    try {
+      text = await response.text();
+    } catch {
+      text = "Unable to read response text";
+    }
+    const msg = `PE-REP-007: Invalid JSON response from Telegram: ${text}`;
+    console.error(msg);
+    return { ok: false, error: msg };
   }
+
+  // ---------------------------------------------------------
+  // 7. Success: return the parsed result
+  // ---------------------------------------------------------
+  console.log("PE-REP-008: Message sent successfully to Telegram");
+  return { ok: true, result: parsed };
 }
