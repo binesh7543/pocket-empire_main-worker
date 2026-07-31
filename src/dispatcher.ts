@@ -1,7 +1,9 @@
 /**
- * dispatcher.ts – Raw Payload Inspector
- * Role: Receives whatever index.ts passes, stringifies it, 
- * and sends it back to Telegram env.TELEGRAM_CHAT_ID.
+ * dispatcher.ts – Raw Payload Inspector with Authorisation Checkpoint
+ * 
+ * Checks incoming Telegram chat IDs against the allowed one.
+ * If unauthorised, sends an alert and stops.
+ * Otherwise, dumps the raw payload structure to the admin chat.
  */
 
 export async function handleFetch(
@@ -11,40 +13,75 @@ export async function handleFetch(
   request: Request
 ): Promise<void> {
   try {
-    // 1. Telegram API Details from Environment Variables
     const token = env.TELEGRAM_BOT_TOKEN;
-    const chatId = env.TELEGRAM_CHAT_ID;
+    const adminChatId = env.TELEGRAM_CHAT_ID;
 
-    if (!token || !chatId) {
-      console.log("Error: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is missing in env!");
+    if (!token || !adminChatId) {
+      console.error('Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID in env!');
       return;
     }
 
-    // 2. Incoming Payload ko String me convert kiya taaki pura Structure dikhe
-    const rawDataString = JSON.stringify(payload, null, 2);
+    // ── 1. CHECKPOINT: Authorise chat ID ──────────────────
+    // Extract chat ID from the payload if it's a Telegram update
+    const chatId = payload?.message?.chat?.id?.toString();
 
-    // Telegram Telegram message limit ~4090 characters
-    const safeText = rawDataString.length > 4000 
-      ? rawDataString.substring(0, 4000) + "\n...[Truncated]"
+    if (chatId && chatId !== adminChatId) {
+      // Unauthorised user – send alert and abort
+      console.log(`🚫 Unauthorised chat ID: ${chatId}`);
+      await sendTelegramMessage(
+        token,
+        adminChatId,
+        `🛑 *Unauthorised Access Attempt*\n` +
+        `Chat ID: \`${chatId}\`\n` +
+        `Message: ${payload?.message?.text || '(no text)'}`
+      );
+      return; // Stop further processing
+    }
+
+    // ── 2. Authorised (or non‑Telegram payload) ──────────
+    // Dump the raw payload structure
+    let rawDataString = JSON.stringify(payload, null, 2);
+    const safeText = rawDataString.length > 4000
+      ? rawDataString.substring(0, 4000) + '\n...[Truncated]'
       : rawDataString;
 
-    // 3. Directly Environment Variables use karke Telegram ko send kar diya
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: `📦 *INCOMING PAYLOAD STRUCTURE*:\n\`\`\`json\n${safeText}\n\`\`\``,
-        parse_mode: "Markdown",
-      }),
-    });
+    await sendTelegramMessage(
+      token,
+      adminChatId,
+      `📦 *INCOMING PAYLOAD STRUCTURE*:\n\`\`\`json\n${safeText}\n\`\`\``
+    );
 
   } catch (error: any) {
-    console.error("Error sending raw payload to Telegram:", error.message || error);
+    console.error('Error in handleFetch:', error.message || error);
   }
 }
 
-// Optional Handlers (Aap ise khali rakh sakte hain)
-export async function handleScheduled(event: any, env: any, ctx: any): Promise<void> {}
-export async function handleQueue(batch: any, env: any, ctx: any): Promise<void> {}
+// ── Helper: Send a Telegram message ──────────────────────────
+async function sendTelegramMessage(
+  token: string,
+  chatId: string,
+  text: string
+): Promise<void> {
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: 'Markdown',
+      }),
+    });
+  } catch (e) {
+    console.error('Failed to send Telegram message:', e);
+  }
+}
 
+// ── Placeholders for other event types ──────────────────────
+export async function handleScheduled(event: any, env: any, ctx: any): Promise<void> {
+  // No‑op: can be extended later
+}
+
+export async function handleQueue(batch: any, env: any, ctx: any): Promise<void> {
+  // No‑op: can be extended later
+}
