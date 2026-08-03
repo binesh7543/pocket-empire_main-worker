@@ -1,50 +1,61 @@
 /**
- * dispatcher.ts – Raw Payload Inspector
- * Role: Receives whatever index.ts passes, stringifies it, 
- * and sends it back to Telegram env.TELEGRAM_CHAT_ID.
+ * ============================================================
+ *  POCKET EMPIRE — DISPATCHER (dispatcher.ts)
+ *  Version : 0.0.2
+ *  Role    : Abhi ke liye bilkul simple — jo message Telegram
+ *            se aaya, wahi seedha Telegram ko wapas bhej deta
+ *            hai (echo). Baad mein yahi function real routing
+ *            logic (topic decision engine etc.) handle karega.
+ * ============================================================
  */
 
-export async function handleFetch(
-  payload: any,
-  env: Record<string, any>,
-  ctx: ExecutionContext,
-  request: Request
-): Promise<void> {
-  try {
-    // 1. Telegram API Details from Environment Variables
-    const token = env.TELEGRAM_BOT_TOKEN;
-    const chatId = env.TELEGRAM_CHAT_ID;
+import type { Env } from "./index";
 
-    if (!token || !chatId) {
-      console.log("Error: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is missing in env!");
+export interface DispatchArgs {
+  payload: any;
+  env: Env;
+  ctx: ExecutionContext;
+}
+
+export async function dispatch({ payload, env }: DispatchArgs): Promise<void> {
+  try {
+    // ----------------------------------------------------
+    // 🔹 STEP 1 — Telegram update se chat_id + text nikaalo
+    // ----------------------------------------------------
+    const chatId = payload?.message?.chat?.id;
+    const text = payload?.message?.text;
+
+    if (!chatId || !text) {
+      console.log("PE-DISPATCH: skip — chat_id/text missing", payload);
       return;
     }
 
-    // 2. Incoming Payload ko String me convert kiya taaki pura Structure dikhe
-    const rawDataString = JSON.stringify(payload, null, 2);
+    // ----------------------------------------------------
+    // 🔹 STEP 2 — FUTURE: yahan asli routing/logic aayega
+    //    (topic decision, mode select, etc.)
+    // ----------------------------------------------------
 
-    // Telegram Telegram message limit ~4090 characters
-    const safeText = rawDataString.length > 4000 
-      ? rawDataString.substring(0, 4000) + "\n...[Truncated]"
-      : rawDataString;
-
-    // 3. Directly Environment Variables use karke Telegram ko send kar diya
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: `📦 *INCOMING PAYLOAD STRUCTURE*:\n\`\`\`json\n${safeText}\n\`\`\``,
-        parse_mode: "Markdown",
-      }),
-    });
-
-  } catch (error: any) {
-    console.error("Error sending raw payload to Telegram:", error.message || error);
+    // Abhi: jo aaya wahi wapas bhej do
+    await sendTelegram(env, chatId, text);
+  } catch (err) {
+    console.error("PE-DISPATCH-ERR:", err);
+    // 🔜 FUTURE: env.TELEGRAM_BOT_TOKEN se error alert bhi bhej sakte hain
   }
 }
 
-// Optional Handlers (Aap ise khali rakh sakte hain)
-export async function handleScheduled(event: any, env: any, ctx: any): Promise<void> {}
-export async function handleQueue(batch: any, env: any, ctx: any): Promise<void> {}
+// ========================================================
+// 🔧 Helper — Telegram ko message bhejna
+// ========================================================
 
+async function sendTelegram(env: Env, chatId: number, text: string): Promise<void> {
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    console.log("PE-DISPATCH: TELEGRAM_BOT_TOKEN missing, skip send");
+    return;
+  }
+
+  await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text }),
+  });
+}
