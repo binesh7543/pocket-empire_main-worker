@@ -1,3 +1,10 @@
+// index.ts – Minimal webhook handler for Cloudflare Workers
+
+export interface Env {
+  // Add your environment variables here (optional for now)
+  // e.g., PROFILE_A_URL, PROFILE_A_API_KEY, etc.
+}
+
 /**
  * ============================================================
  *  POCKET EMPIRE — MAIN ENTRY (index.ts)
@@ -8,6 +15,8 @@
  *            payload pass kar deta hai.
  * ============================================================
  */
+async function dispatcher(message: any, env: Env, ctx: ExecutionContext): Promise<void> {
+  console.log('Dispatching message:', message);
 
 import { dispatch } from "./dispatcher";
 
