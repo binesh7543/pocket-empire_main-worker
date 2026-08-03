@@ -1,64 +1,46 @@
 /**
- * index.ts – Pure Event Router for Cloudflare Workers
- * 
- * Delegates all processing to `./dispatcher`.
- * No business logic – only routing and fast responses.
+ * ============================================================
+ *  POCKET EMPIRE — MAIN ENTRY (index.ts)
+ *  Version : 0.0.2
+ *  Role    : Telegram webhook ko TURANT 200 OK deta hai
+ *            (warna Telegram retry karta rahega), phir
+ *            background mein (waitUntil) dispatcher.ts ko
+ *            payload pass kar deta hai.
+ * ============================================================
  */
 
-import { handleFetch, handleScheduled, handleQueue } from './dispatcher';
+import { dispatch } from "./dispatcher";
+
+export interface Env {
+  TELEGRAM_BOT_TOKEN?: string;
+  // 🔽 FUTURE BINDINGS
+  // PE_COLLECTOR: Queue;
+}
 
 export default {
-  /**
-   * HTTP entry point – handles Telegram webhooks (and any other POST requests).
-   * 
-   * 1. Allows only POST.
-   * 2. Parses JSON payload safely.
-   * 3. Kicks off background processing via `ctx.waitUntil()`.
-   * 4. Returns `200 OK` immediately.
-   */
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    // Reject non‑POST requests immediately
-    if (request.method !== 'POST') {
-      return new Response('Method Not Allowed', { status: 405 });
-    }
-
+    // ----------------------------------------------------
+    // 🔹 STEP 1 — Payload padho (safe)
+    // ----------------------------------------------------
+    let payload: unknown = null;
     try {
-      // Safely parse the incoming JSON payload
-      const payload = await request.json();
-
-      // Offload the actual work to the dispatcher, don't block the response
-      ctx.waitUntil(handleFetch(payload, env, ctx, request));
-
-      // Acknowledge receipt – Telegram will not retry
-      return new Response('OK', { status: 200 });
-    } catch (_error) {
-      // Invalid JSON or other parsing errors
-      return new Response('Bad Request', { status: 400 });
+      payload = await request.json();
+    } catch {
+      payload = null;
     }
+
+    // ----------------------------------------------------
+    // 🔹 STEP 2 — Background mein dispatcher ko bhej do,
+    //    response ka wait kiye bina
+    // ----------------------------------------------------
+    ctx.waitUntil(dispatch({ payload, env, ctx }));
+
+    // ----------------------------------------------------
+    // 🔹 STEP 3 — Telegram ko turant OK
+    // ----------------------------------------------------
+    return new Response("OK", { status: 200 });
   },
 
-  /**
-   * Cron / scheduled event entry point.
-   */
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(handleScheduled(event, env, ctx));
-  },
-
-  /**
-   * Queue consumer entry point.
-   */
-  async queue(batch: MessageBatch<any>, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(handleQueue(batch, env, ctx));
-  },
+  // 🔜 FUTURE — scheduled(event, env, ctx) → cron
+  // 🔜 FUTURE — queue(batch, env, ctx) → queue consumer
 };
-
-/**
- * Minimal environment type – extend with your own variables.
- */
-interface Env {
-  // Add your environment variables here
-  // e.g. TELEGRAM_BOT_TOKEN: string;
-  //      TELEGRAM_CHAT_ID: string;
-  //      KV_NAMESPACE: KVNamespace;
-  [key: string]: any;
-}
