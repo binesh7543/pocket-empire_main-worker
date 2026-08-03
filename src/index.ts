@@ -41,6 +41,18 @@ export default {
     return new Response("OK", { status: 200 });
   },
 
+  // ----------------------------------------------------
+  // 🔹 Queue consumer — STUB (abhi sirf ack karta hai)
+  //    wrangler.toml mein queues already bound hain, isliye
+  //    handler zaroori hai warna deploy fail hota hai.
+  //    Real processing logic FUTURE mein yahan aayega.
+  // ----------------------------------------------------
+  async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
+    for (const msg of batch.messages) {
+      console.log(`PE-QUEUE[${batch.queue}]: received`, msg.body);
+      msg.ack();
+    }
+  },
+
   // 🔜 FUTURE — scheduled(event, env, ctx) → cron
-  // 🔜 FUTURE — queue(batch, env, ctx) → queue consumer
 };
