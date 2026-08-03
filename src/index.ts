@@ -6,64 +6,50 @@ export interface Env {
 }
 
 /**
- * Background dispatcher – this is where all processing happens.
- * Add your own functions below and call them here.
+ * ============================================================
+ *  POCKET EMPIRE — MAIN ENTRY (index.ts)
+ *  Version : 0.0.2
+ *  Role    : Telegram webhook ko TURANT 200 OK deta hai
+ *            (warna Telegram retry karta rahega), phir
+ *            background mein (waitUntil) dispatcher.ts ko
+ *            payload pass kar deta hai.
+ * ============================================================
  */
 async function dispatcher(message: any, env: Env, ctx: ExecutionContext): Promise<void> {
   console.log('Dispatching message:', message);
 
-  // --- Add your processing functions here ---
-  // Example: send to profile A
-  await sendToProfileA(message, env).catch(err => console.error('Profile A error:', err));
+import { dispatch } from "./dispatcher";
 
-  // Example: send to profile B
-  await sendToProfileB(message, env).catch(err => console.error('Profile B error:', err));
-
-  // You can add more functions below – just call them here
-  // await thirdFunction(message, env, ctx);
-  // await fourthFunction(message, env, ctx);
-  // ...
+export interface Env {
+  TELEGRAM_BOT_TOKEN?: string;
+  // 🔽 FUTURE BINDINGS
+  // PE_COLLECTOR: Queue;
 }
-
-// ------------------------------------------------------------------
-// Placeholder functions – replace with your actual implementations.
-// You can keep adding new functions below this line.
-// ------------------------------------------------------------------
-
-async function sendToProfileA(message: any, env: Env): Promise<void> {
-  // Example: fetch(env.PROFILE_A_URL, { method: 'POST', body: JSON.stringify(message) })
-  console.log('Sending to Profile A (placeholder)');
-}
-
-async function sendToProfileB(message: any, env: Env): Promise<void> {
-  console.log('Sending to Profile B (placeholder)');
-}
-
-// ------------------------------------------------------------------
-// Main worker handler
-// ------------------------------------------------------------------
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    // 1. Accept only POST
-    if (request.method !== 'POST') {
-      return new Response('Method not allowed', { status: 405 });
-    }
-
-    // 2. Parse the incoming message
-    let message: any;
+    // ----------------------------------------------------
+    // 🔹 STEP 1 — Payload padho (safe)
+    // ----------------------------------------------------
+    let payload: unknown = null;
     try {
-      message = await request.json();
+      payload = await request.json();
     } catch {
-      return new Response('Invalid JSON', { status: 400 });
+      payload = null;
     }
 
-    // 3. Respond immediately (fast path)
-    const response = new Response('Webhook received', { status: 200 });
+    // ----------------------------------------------------
+    // 🔹 STEP 2 — Background mein dispatcher ko bhej do,
+    //    response ka wait kiye bina
+    // ----------------------------------------------------
+    ctx.waitUntil(dispatch({ payload, env, ctx }));
 
-    // 4. Offload processing to the background (dispatcher gets env & ctx)
-    ctx.waitUntil(dispatcher(message, env, ctx));
-
-    return response;
+    // ----------------------------------------------------
+    // 🔹 STEP 3 — Telegram ko turant OK
+    // ----------------------------------------------------
+    return new Response("OK", { status: 200 });
   },
+
+  // 🔜 FUTURE — scheduled(event, env, ctx) → cron
+  // 🔜 FUTURE — queue(batch, env, ctx) → queue consumer
 };

@@ -1,87 +1,61 @@
 /**
- * dispatcher.ts – Raw Payload Inspector with Authorisation Checkpoint
- * 
- * Checks incoming Telegram chat IDs against the allowed one.
- * If unauthorised, sends an alert and stops.
- * Otherwise, dumps the raw payload structure to the admin chat.
+ * ============================================================
+ *  POCKET EMPIRE — DISPATCHER (dispatcher.ts)
+ *  Version : 0.0.2
+ *  Role    : Abhi ke liye bilkul simple — jo message Telegram
+ *            se aaya, wahi seedha Telegram ko wapas bhej deta
+ *            hai (echo). Baad mein yahi function real routing
+ *            logic (topic decision engine etc.) handle karega.
+ * ============================================================
  */
 
-export async function handleFetch(
-  payload: any,
-  env: Record<string, any>,
-  ctx: ExecutionContext,
-  request: Request
-): Promise<void> {
-  try {
-    const token = env.TELEGRAM_BOT_TOKEN;
-    const adminChatId = env.TELEGRAM_CHAT_ID;
+import type { Env } from "./index";
 
-    if (!token || !adminChatId) {
-      console.error('Missing TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID in env!');
+export interface DispatchArgs {
+  payload: any;
+  env: Env;
+  ctx: ExecutionContext;
+}
+
+export async function dispatch({ payload, env }: DispatchArgs): Promise<void> {
+  try {
+    // ----------------------------------------------------
+    // 🔹 STEP 1 — Telegram update se chat_id + text nikaalo
+    // ----------------------------------------------------
+    const chatId = payload?.message?.chat?.id;
+    const text = payload?.message?.text;
+
+    if (!chatId || !text) {
+      console.log("PE-DISPATCH: skip — chat_id/text missing", payload);
       return;
     }
 
-    // ── 1. CHECKPOINT: Authorise chat ID ──────────────────
-    // Extract chat ID from the payload if it's a Telegram update
-    const chatId = payload?.message?.chat?.id?.toString();
+    // ----------------------------------------------------
+    // 🔹 STEP 2 — FUTURE: yahan asli routing/logic aayega
+    //    (topic decision, mode select, etc.)
+    // ----------------------------------------------------
 
-    if (chatId && chatId !== adminChatId) {
-      // Unauthorised user – send alert and abort
-      console.log(`🚫 Unauthorised chat ID: ${chatId}`);
-      await sendTelegramMessage(
-        token,
-        adminChatId,
-        `🛑 *Unauthorised Access Attempt*\n` +
-        `Chat ID: \`${chatId}\`\n` +
-        `Message: ${payload?.message?.text || '(no text)'}`
-      );
-      return; // Stop further processing
-    }
-
-    // ── 2. Authorised (or non‑Telegram payload) ──────────
-    // Dump the raw payload structure
-    let rawDataString = JSON.stringify(payload, null, 2);
-    const safeText = rawDataString.length > 4000
-      ? rawDataString.substring(0, 4000) + '\n...[Truncated]'
-      : rawDataString;
-
-    await sendTelegramMessage(
-      token,
-      adminChatId,
-      `📦 *INCOMING PAYLOAD STRUCTURE*:\n\`\`\`json\n${safeText}\n\`\`\``
-    );
-
-  } catch (error: any) {
-    console.error('Error in handleFetch:', error.message || error);
+    // Abhi: jo aaya wahi wapas bhej do
+    await sendTelegram(env, chatId, text);
+  } catch (err) {
+    console.error("PE-DISPATCH-ERR:", err);
+    // 🔜 FUTURE: env.TELEGRAM_BOT_TOKEN se error alert bhi bhej sakte hain
   }
 }
 
-// ── Helper: Send a Telegram message ──────────────────────────
-async function sendTelegramMessage(
-  token: string,
-  chatId: string,
-  text: string
-): Promise<void> {
-  try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: 'Markdown',
-      }),
-    });
-  } catch (e) {
-    console.error('Failed to send Telegram message:', e);
+// ========================================================
+// 🔧 Helper — Telegram ko message bhejna
+// ========================================================
+
+async function sendTelegram(env: Env, chatId: number, text: string): Promise<void> {
+  if (!env.TELEGRAM_BOT_TOKEN) {
+    console.log("PE-DISPATCH: TELEGRAM_BOT_TOKEN missing, skip send");
+    return;
   }
-}
 
-// ── Placeholders for other event types ──────────────────────
-export async function handleScheduled(event: any, env: any, ctx: any): Promise<void> {
-  // No‑op: can be extended later
-}
-
-export async function handleQueue(batch: any, env: any, ctx: any): Promise<void> {
-  // No‑op: can be extended later
+  await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text }),
+  });
 }
