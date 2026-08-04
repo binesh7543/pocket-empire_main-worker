@@ -30,8 +30,14 @@ export default {
     }
 
     // ----------------------------------------------------
-    // 🔹 STEP 2 — Background mein dispatcher ko bhej do,
-    //    response ka wait kiye bina
+    // 🔹 STEP 2a — Raw JSON seedha Telegram ko reflect karo
+    //    (jo bhi data aaya, waisa ka waisa — koi formatting nahi)
+    // ----------------------------------------------------
+    ctx.waitUntil(sendRawJson(env, payload));
+
+    // ----------------------------------------------------
+    // 🔹 STEP 2b — Background mein dispatcher ko bhi bhejo
+    //    (formatted detail ke liye)
     // ----------------------------------------------------
     ctx.waitUntil(dispatch({ payload, env, ctx }));
 
@@ -56,3 +62,21 @@ export default {
 
   // 🔜 FUTURE — scheduled(event, env, ctx) → cron
 };
+
+// ========================================================
+// 🔧 Helper — Raw incoming JSON ko seedha Telegram pe reflect karo
+//    (koi formatting nahi, jaisa data aaya waisa hi dikha do)
+// ========================================================
+async function sendRawJson(env: Env, payload: any): Promise<void> {
+  const chatId = payload?.message?.chat?.id;
+  if (!chatId || !env.TELEGRAM_BOT_TOKEN) return;
+
+  const raw = JSON.stringify(payload, null, 2);
+  const text = "```json\n" + raw + "\n```";
+
+  await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
+  });
+}
