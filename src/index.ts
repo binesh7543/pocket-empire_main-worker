@@ -1,27 +1,43 @@
 /**
  * ============================================================
  *  POCKET EMPIRE — MAIN ENTRY (index.ts)
- *  Version : 0.0.2
- *  Role    : Telegram webhook ko TURANT 200 OK deta hai
- *            (warna Telegram retry karta rahega), phir
- *            background mein (waitUntil) dispatcher.ts ko
- *            payload pass kar deta hai.
+ *  Version : 0.0.3
+ *
+ *  Role (sirf 3 kaam, aur kuch NAHI):
+ *    1) Telegram Webhook se message aaye → turant 200 OK do
+ *       (Telegram retry loop se bachne ke liye)
+ *    2) Us message ko background mein (waitUntil) dispatcher.ts
+ *       ko pass kar do
+ *    3) Cron trigger chale to bhi wahi ek dispatcher ko call karo
+ *
+ *  RULE: Is file ke andar Telegram ko seedha koi message NAHI
+ *  jaayega. Sending/reporting ka kaam sirf dispatcher.ts +
+ *  reporter.ts karte hain. index.ts sirf "traffic director" hai.
  * ============================================================
  */
 
 import { dispatch } from "./dispatcher";
+import { report } from "./reporter";
 
 export interface Env {
   TELEGRAM_BOT_TOKEN?: string;
-  // 🔽 FUTURE BINDINGS
+  TELEGRAM_CHAT_ID?: string;
+  // 🔽 FUTURE BINDINGS — jaise-jaise use honge, yahan declare karo
+  // DB: D1Database;
+  // AI: Ai;
+  // PE_KV: KVNamespace;
+  // PE_REPORTER: Queue;
   // PE_COLLECTOR: Queue;
+  // PE_PROCESSOR: Queue;
+  // PE_PUBLISHER: Queue;
+  // RSS_FEED_URL: string;
 }
 
 export default {
+  // ------------------------------------------------------
+  // 🔹 1) Telegram Webhook entry (HTTP POST)
+  // ------------------------------------------------------
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    // ----------------------------------------------------
-    // 🔹 STEP 1 — Payload padho (safe)
-    // ----------------------------------------------------
     let payload: unknown = null;
     try {
       payload = await request.json();
@@ -29,54 +45,45 @@ export default {
       payload = null;
     }
 
-    // ----------------------------------------------------
-    // 🔹 STEP 2a — Raw JSON seedha Telegram ko reflect karo
-    //    (jo bhi data aaya, waisa ka waisa — koi formatting nahi)
-    // ----------------------------------------------------
-    ctx.waitUntil(sendRawJson(env, payload));
+    // Background mein: dispatcher ko kaam do, phir apna status report karo
+    ctx.waitUntil(handleWebhook(payload, env, ctx));
 
-    // ----------------------------------------------------
-    // 🔹 STEP 2b — Background mein dispatcher ko bhi bhejo
-    //    (formatted detail ke liye)
-    // ----------------------------------------------------
-    ctx.waitUntil(dispatch({ payload, env, ctx }));
-
-    // ----------------------------------------------------
-    // 🔹 STEP 3 — Telegram ko turant OK
-    // ----------------------------------------------------
+    // Telegram ko turant OK — asli kaam background mein chalega
     return new Response("OK", { status: 200 });
   },
 
-  // ----------------------------------------------------
-  // 🔹 Queue consumer — STUB (abhi sirf ack karta hai)
-  //    wrangler.toml mein queues already bound hain, isliye
-  //    handler zaroori hai warna deploy fail hota hai.
-  //    Real processing logic FUTURE mein yahan aayega.
-  // ----------------------------------------------------
+  // ------------------------------------------------------
+  // 🔹 2) Cron trigger — usi dispatcher ko call karega
+  // ------------------------------------------------------
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(dispatch({ source: "cron", payload: event, env, ctx }));
+  },
+
+  // ------------------------------------------------------
+  // 🔹 3) Queue consumer — STUB (wrangler.toml mein bound hai,
+  //    isliye handler zaroori hai warna deploy fail hota hai).
+  //    Real queue processing logic FUTURE mein yahan/dispatcher
+  //    mein add hoga.
+  // ------------------------------------------------------
   async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
     for (const msg of batch.messages) {
       console.log(`PE-QUEUE[${batch.queue}]: received`, msg.body);
       msg.ack();
     }
   },
-
-  // 🔜 FUTURE — scheduled(event, env, ctx) → cron
 };
 
 // ========================================================
-// 🔧 Helper — Raw incoming JSON ko seedha Telegram pe reflect karo
-//    (koi formatting nahi, jaisa data aaya waisa hi dikha do)
+// 🔧 Helper — dispatcher ko kaam do, phir APNA khud ka
+//    status reporter ko bolo (exact file name ke saath)
 // ========================================================
-async function sendRawJson(env: Env, payload: any): Promise<void> {
-  const chatId = payload?.message?.chat?.id;
-  if (!chatId || !env.TELEGRAM_BOT_TOKEN) return;
-
-  const raw = JSON.stringify(payload, null, 2);
-  const text = "```json\n" + raw + "\n```";
-
-  await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
-  });
+async function handleWebhook(payload: unknown, env: Env, ctx: ExecutionContext): Promise<void> {
+  try {
+    await dispatch({ source: "webhook", payload, env, ctx });
+    console.log("PE-INDEX-OK: index.ts — kaam khatam, dispatcher ko de diya");
+    await report(env, "✅ index.ts: kaam khatam — payload dispatcher.ts ko pass kar diya");
+  } catch (err) {
+    console.error("PE-INDEX-ERROR:", err);
+    await report(env, `❌ index.ts: error — ${String(err)}`);
+  }
 }
