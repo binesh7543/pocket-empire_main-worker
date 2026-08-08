@@ -1,71 +1,55 @@
-    /**
+/**
  * ============================================================
  *  POCKET EMPIRE — DISPATCHER (dispatcher.ts)
- *  Version : 0.0.2
- *  Role    : Abhi ke liye bilkul simple — jo message Telegram
- *            se aaya, wahi seedha Telegram ko wapas bhej deta
- *            hai (echo). Baad mein yahi function real routing
- *            logic (topic decision engine etc.) handle karega.
+ *  Version : 0.0.1
+ *
+ *  Role: index.ts se (webhook ya cron se) event receive karta
+ *  hai. Abhi ke liye sirf 2 cheezein track karta hai:
+ *    1) message_received — kya payload mila
+ *    2) message_passed   — kya aage process ho gaya
+ *  Dono status ko ek object mein daal ke reporter.ts ko de deta
+ *  hai, jo Telegram pe bhej deta hai.
+ *
+ *  FUTURE: STEP 2 (neeche marked) mein asli routing/logic aayega
+ *  — topic decision engine, mode select, RSS fetch, AI content
+ *  generation, etc. Abhi sirf pass-through/status-check hai.
  * ============================================================
  */
 
 import type { Env } from "./index";
+import { report } from "./reporter";
 
 export interface DispatchArgs {
-  payload: any;
+  source: "webhook" | "cron";
+  payload: unknown;
   env: Env;
   ctx: ExecutionContext;
 }
 
-export async function dispatch({ payload, env }: DispatchArgs): Promise<void> {
+export async function dispatch({ source, payload, env }: DispatchArgs): Promise<void> {
+  const status = {
+    message_received: false,
+    message_passed: false,
+  };
+
   try {
     // ----------------------------------------------------
-    // 🔹 STEP 1 — Telegram update se chat_id nikaalo
+    // 🔹 STEP 1 — Message receive hua ki nahi
     // ----------------------------------------------------
-    const chatId = payload?.message?.chat?.id;
-
-    if (!chatId) {
-      console.log("PE-DISPATCH: skip — chat_id missing", payload);
-      return;
-    }
+    status.message_received = payload !== null && payload !== undefined;
 
     // ----------------------------------------------------
-    // 🔹 STEP 2 — Sirf ADMIN chat ko hi reply karo
-    //    (env.TELEGRAM_CHAT_ID se match hona chahiye)
-    // ----------------------------------------------------
-    if (!env.TELEGRAM_CHAT_ID || String(chatId) !== String(env.TELEGRAM_CHAT_ID)) {
-      console.log("PE-DISPATCH: skip — chat_id admin se match nahi", chatId);
-      return;
-    }
-
-    // ----------------------------------------------------
-    // 🔹 STEP 3 — FUTURE: yahan asli routing/logic aayega
-    //    (topic decision, mode select, etc.)
+    // 🔹 STEP 2 — FUTURE: asli routing/logic yahan aayega
+    //    (topic decision, mode select, RSS/AI pipeline, etc.)
     // ----------------------------------------------------
 
-    // Abhi: raw JSON seedha bhej do (koi formatting nahi)
-    const raw = JSON.stringify(payload, null, 2);
-    const text = "```json\n" + raw + "\n```";
-    await sendTelegram(env, chatId, text);
+    // Abhi ke liye: yahan tak pahuncha matlab pass ho gaya
+    status.message_passed = true;
+
+    console.log(`PE-DISPATCH-OK [${source}]`, status);
+    await report(env, `✅ dispatcher.ts: kaam khatam [${source}]\n${JSON.stringify(status, null, 2)}`);
   } catch (err) {
-    console.error("PE-DISPATCH-ERR:", err);
-    // 🔜 FUTURE: env.TELEGRAM_BOT_TOKEN se error alert bhi bhej sakte hain
+    console.error(`PE-DISPATCH-ERROR [${source}]`, err);
+    await report(env, `❌ dispatcher.ts: error [${source}] — ${String(err)}\n${JSON.stringify(status, null, 2)}`);
   }
-}
-
-// ========================================================
-// 🔧 Helper — Telegram ko message bhejna
-// ========================================================
-
-async function sendTelegram(env: Env, chatId: number, text: string): Promise<void> {
-  if (!env.TELEGRAM_BOT_TOKEN) {
-    console.log("PE-DISPATCH: TELEGRAM_BOT_TOKEN missing, skip send");
-    return;
-  }
-
-  await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
-  });
 }
