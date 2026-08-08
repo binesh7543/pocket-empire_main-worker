@@ -1,4 +1,4 @@
-/**
+    /**
  * ============================================================
  *  POCKET EMPIRE — DISPATCHER (dispatcher.ts)
  *  Version : 0.0.2
@@ -30,47 +30,27 @@ export async function dispatch({ payload, env }: DispatchArgs): Promise<void> {
     }
 
     // ----------------------------------------------------
-    // 🔹 STEP 2 — FUTURE: yahan asli routing/logic aayega
+    // 🔹 STEP 2 — Sirf ADMIN chat ko hi reply karo
+    //    (env.TELEGRAM_CHAT_ID se match hona chahiye)
+    // ----------------------------------------------------
+    if (!env.TELEGRAM_CHAT_ID || String(chatId) !== String(env.TELEGRAM_CHAT_ID)) {
+      console.log("PE-DISPATCH: skip — chat_id admin se match nahi", chatId);
+      return;
+    }
+
+    // ----------------------------------------------------
+    // 🔹 STEP 3 — FUTURE: yahan asli routing/logic aayega
     //    (topic decision, mode select, etc.)
     // ----------------------------------------------------
 
-    // Abhi: poora update detail formatted karke wapas bhejo
-    const detail = formatUpdateDetail(payload);
-    await sendTelegram(env, chatId, detail);
+    // Abhi: raw JSON seedha bhej do (koi formatting nahi)
+    const raw = JSON.stringify(payload, null, 2);
+    const text = "```json\n" + raw + "\n```";
+    await sendTelegram(env, chatId, text);
   } catch (err) {
     console.error("PE-DISPATCH-ERR:", err);
     // 🔜 FUTURE: env.TELEGRAM_BOT_TOKEN se error alert bhi bhej sakte hain
   }
-}
-
-// ========================================================
-// 🔧 Helper — Incoming Telegram update ko readable banao
-// ========================================================
-
-function formatUpdateDetail(payload: any): string {
-  const msg = payload?.message;
-  if (!msg) {
-    return `⚠️ Update mila lekin 'message' field nahi hai:\n${JSON.stringify(payload)}`;
-  }
-
-  const from = msg.from ?? {};
-  const chat = msg.chat ?? {};
-  const dateStr = msg.date
-    ? new Date(msg.date * 1000).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })
-    : "-";
-
-  return [
-    "📩 *Naya Message Detail*",
-    "",
-    `🆔 Update ID: ${payload.update_id ?? "-"}`,
-    `💬 Message ID: ${msg.message_id ?? "-"}`,
-    `👤 From: ${from.first_name ?? "-"} ${from.last_name ?? ""} (@${from.username ?? "-"})`,
-    `🔢 User ID: ${from.id ?? "-"}`,
-    `🗨️ Chat ID: ${chat.id ?? "-"} (${chat.type ?? "-"})`,
-    `📅 Date: ${dateStr}`,
-    "",
-    `📝 Text:\n${msg.text ?? "(no text)"}`,
-  ].join("\n");
 }
 
 // ========================================================
@@ -89,4 +69,3 @@ async function sendTelegram(env: Env, chatId: number, text: string): Promise<voi
     body: JSON.stringify({ chat_id: chatId, text, parse_mode: "Markdown" }),
   });
 }
-
