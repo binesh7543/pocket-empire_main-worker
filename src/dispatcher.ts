@@ -27,7 +27,10 @@ export interface DispatchArgs {
 }
 
 export async function dispatch({ source, payload, env }: DispatchArgs): Promise<void> {
+  const requestId = (payload as any)?.update_id ?? "unknown";
+
   const status = {
+    source,
     message_received: false,
     message_passed: false,
   };
@@ -46,10 +49,39 @@ export async function dispatch({ source, payload, env }: DispatchArgs): Promise<
     // Abhi ke liye: yahan tak pahuncha matlab pass ho gaya
     status.message_passed = true;
 
-    console.log(`PE-DISPATCH-OK [${source}]`, status);
-    await report(env, `✅ dispatcher.ts: kaam khatam [${source}]\n${JSON.stringify(status, null, 2)}`);
+    const entry = logEvent("info", "dispatcher.ts", requestId, status);
+    await report(env, JSON.stringify(entry, null, 2));
   } catch (err) {
-    console.error(`PE-DISPATCH-ERROR [${source}]`, err);
-    await report(env, `❌ dispatcher.ts: error [${source}] — ${String(err)}\n${JSON.stringify(status, null, 2)}`);
+    const entry = logEvent("error", "dispatcher.ts", requestId, { ...status, error: String(err) });
+    await report(env, JSON.stringify(entry, null, 2));
   }
 }
+
+// ========================================================
+// 🔧 Helper — Standard structured log (index.ts jaisa hi)
+//    level: "info"  → normal kaam ho gaya
+//    level: "warn"  → kuch ajeeb hua lekin crash nahi hua
+//    level: "error" → kuch fail ho gaya
+// ========================================================
+type LogLevel = "info" | "warn" | "error";
+
+function logEvent(level: LogLevel, file: string, requestId: unknown, data: unknown) {
+  const entry = {
+    level,
+    file,
+    request_id: requestId,
+    timestamp: new Date().toISOString(),
+    data,
+  };
+
+  if (level === "error") {
+    console.error(JSON.stringify(entry));
+  } else if (level === "warn") {
+    console.warn(JSON.stringify(entry));
+  } else {
+    console.log(JSON.stringify(entry));
+  }
+
+  return entry;
+}
+  
