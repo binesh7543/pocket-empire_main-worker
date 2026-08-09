@@ -10,14 +10,14 @@
  *       ko pass kar do
  *    3) Cron trigger chale to bhi wahi ek dispatcher ko call karo
  *
- *  RULE: Is file ke andar Telegram ko seedha koi message NAHI
- *  jaayega. Sending/reporting ka kaam sirf dispatcher.ts +
- *  reporter.ts karte hain. index.ts sirf "traffic director" hai.
+ *  RULE: Is file ke andar koi logging/reporting NAHI hai. Yahan
+ *  sirf payload ko dispatcher.ts ko pass karna hai — kaam khatam.
+ *  Logging + Telegram reporting ka poora kaam dispatcher.ts +
+ *  reporter.ts ke andar hota hai. index.ts sirf "traffic director".
  * ============================================================
  */
 
 import { dispatch } from "./dispatcher";
-import { report } from "./reporter";
 
 export interface Env {
   TELEGRAM_BOT_TOKEN?: string;
@@ -45,8 +45,8 @@ export default {
       payload = null;
     }
 
-    // Background mein: dispatcher ko kaam do, phir apna status report karo
-    ctx.waitUntil(handleWebhook(payload, env, ctx));
+    // Message ko background mein dispatcher ko de do, wait mat karo
+    ctx.waitUntil(dispatch({ source: "webhook", payload, env, ctx }));
 
     // Telegram ko turant OK — asli kaam background mein chalega
     return new Response("OK", { status: 200 });
@@ -72,21 +72,3 @@ export default {
     }
   },
 };
-
-// ========================================================
-// 🔧 Helper — dispatcher ko kaam do, phir APNA khud ka
-//    status reporter ko bolo (exact file name ke saath)
-// ========================================================
-async function handleWebhook(payload: unknown, env: Env, ctx: ExecutionContext): Promise<void> {
-  try {
-    await dispatch({ source: "webhook", payload, env, ctx });
-
-    const data = { file: "index.ts", source: "webhook", payload };
-    console.log("PE-INDEX:", JSON.stringify(data));
-    await report(env, JSON.stringify(data, null, 2));
-  } catch (err) {
-    const data = { file: "index.ts", source: "webhook", error: String(err) };
-    console.error("PE-INDEX-ERROR:", JSON.stringify(data));
-    await report(env, JSON.stringify(data, null, 2));
-  }
-}
