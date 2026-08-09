@@ -80,10 +80,13 @@ export default {
 async function handleWebhook(payload: unknown, env: Env, ctx: ExecutionContext): Promise<void> {
   try {
     await dispatch({ source: "webhook", payload, env, ctx });
-    console.log("PE-INDEX-OK: index.ts — kaam khatam, dispatcher ko de diya");
-    await report(env, "✅ index.ts: kaam khatam — payload dispatcher.ts ko pass kar diya");
+
+    const data = { file: "index.ts", source: "webhook", payload };
+    console.log("PE-INDEX:", JSON.stringify(data));
+    await report(env, JSON.stringify(data, null, 2));
   } catch (err) {
-    console.error("PE-INDEX-ERROR:", err);
-    await report(env, `❌ index.ts: error — ${String(err)}`);
+    const data = { file: "index.ts", source: "webhook", error: String(err) };
+    console.error("PE-INDEX-ERROR:", JSON.stringify(data));
+    await report(env, JSON.stringify(data, null, 2));
   }
 }
