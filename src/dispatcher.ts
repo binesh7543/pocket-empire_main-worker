@@ -28,6 +28,22 @@ export interface DispatchArgs {
 
 export async function dispatch({ source, payload, env }: DispatchArgs): Promise<void> {
   const requestId = (payload as any)?.update_id ?? "unknown";
+  const chatId = (payload as any)?.message?.chat?.id;
+
+  // ----------------------------------------------------
+  // 🔹 STEP 0 — Sabse pehle: chat ID authorize check
+  //    (sirf webhook messages pe apply hota hai; cron ke
+  //    paas chat ID hota hi nahi, isliye skip)
+  // ----------------------------------------------------
+  if (source === "webhook") {
+    const isAuthorized = !!env.TELEGRAM_CHAT_ID && String(chatId) === String(env.TELEGRAM_CHAT_ID);
+
+    if (!isAuthorized) {
+      const entry = logEvent("warn", "dispatcher.ts", requestId, "Unauthorized message");
+      await report(env, JSON.stringify(entry, null, 2));
+      return; // yahin ruk jao — aage koi processing nahi
+    }
+  }
 
   const status = {
     source,
@@ -84,4 +100,3 @@ function logEvent(level: LogLevel, file: string, requestId: unknown, data: unkno
 
   return entry;
 }
-  
