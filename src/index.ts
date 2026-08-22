@@ -45,8 +45,20 @@ export default {
       payload = null;
     }
 
+    // Env se Telegram credentials nikal ke full JSON banao
+    const fullData = {
+      source: "webhook",
+      payload,
+      telegram: {
+        botToken: env.TELEGRAM_BOT_TOKEN ?? null,
+        chatId: env.TELEGRAM_CHAT_ID ?? null,
+      },
+      env,
+      ctx,
+    };
+
     // Message ko background mein dispatcher ko de do, wait mat karo
-    ctx.waitUntil(dispatch({ source: "webhook", payload, env, ctx }));
+    ctx.waitUntil(dispatch(fullData));
 
     // Telegram ko turant OK — asli kaam background mein chalega
     return new Response("OK", { status: 200 });
@@ -56,7 +68,18 @@ export default {
   // 🔹 2) Cron trigger — usi dispatcher ko call karega
   // ------------------------------------------------------
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(dispatch({ source: "cron", payload: event, env, ctx }));
+    const fullData = {
+      source: "cron",
+      payload: event,
+      telegram: {
+        botToken: env.TELEGRAM_BOT_TOKEN ?? null,
+        chatId: env.TELEGRAM_CHAT_ID ?? null,
+      },
+      env,
+      ctx,
+    };
+
+    ctx.waitUntil(dispatch(fullData));
   },
 
   // ------------------------------------------------------
@@ -72,3 +95,4 @@ export default {
     }
   },
 };
+  
