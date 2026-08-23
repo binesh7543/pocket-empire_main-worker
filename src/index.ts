@@ -1,43 +1,20 @@
 /**
  * ============================================================
  *  POCKET EMPIRE — MAIN ENTRY (index.ts)
- *  Version : 0.0.5  (TEMP DEBUG — dispatcher hataya gaya)
+ *  Version : 0.0.6  (TEMP DEBUG — headers + body dono bhej raha)
  *
- *  Status: Ye TEMPORARY testing version hai. Sirf ye check karne
- *  ke liye ki Telegram webhook se data kaise aa raha hai.
+ *  Status: TEMPORARY testing version. Sirf ye dekhne ke liye ki
+ *  webhook se HTTP headers aur body dono kaise/kya aa rahe hain.
  *
- *  Dispatcher.ts (aur uske through jo bhi reporter.ts / aage
- *  call hote the) — SAB HATA DIYA GAYA HAI. Ab ye file khud hi
- *  standalone hai, kisi aur file ko call/import nahi karti.
- *
- *  Kya bacha hai:
- *    1) fetch()      → Webhook se data aata hai, turant 200 OK,
- *                       aur khud hi seedha Telegram ko message
- *                       bhej deta hai (debug ke liye).
- *    2) scheduled()  → Cron handler — ye jaan-bujh kar rakha gaya
- *                       hai. wrangler.toml mein cron trigger bound
- *                       hai, isliye agar ye handler na ho to
- *                       deploy hi FAIL ho jaata hai (pehle bhi
- *                       aisa dekha gaya tha). Abhi iske andar
- *                       koi logic nahi, bas stub hai.
- *    3) queue()      → Queue consumer stub — wrangler.toml mein
- *                       bound hai isliye zaroori hai, warna deploy
- *                       fail hoga. Abhi sirf ack() kar raha hai.
+ *  Baaki sab hata diya gaya hai — koi dispatcher, koi cron logic,
+ *  kuch nahi. Sirf webhook aata hai → uske headers + body ko
+ *  Telegram par bhej deta hai.
  * ============================================================
  */
 
 export interface Env {
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
-  // 🔽 FUTURE BINDINGS — jaise-jaise use honge, yahan declare karo
-  // DB: D1Database;
-  // AI: Ai;
-  // PE_KV: KVNamespace;
-  // PE_REPORTER: Queue;
-  // PE_COLLECTOR: Queue;
-  // PE_PROCESSOR: Queue;
-  // PE_PUBLISHER: Queue;
-  // RSS_FEED_URL: string;
 }
 
 // ------------------------------------------------------
@@ -65,40 +42,33 @@ async function sendTelegramMessage(env: Env, text: string): Promise<void> {
 
 export default {
   // ------------------------------------------------------
-  // 🔹 1) Telegram Webhook entry (HTTP POST)
+  // 🔹 Telegram Webhook entry (HTTP POST) — DEBUG ONLY
   // ------------------------------------------------------
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    let payload: unknown = null;
+    // Headers ko object mein collect karo
+    const headersObj: Record<string, string> = {};
+    request.headers.forEach((value, key) => {
+      headersObj[key] = value;
+    });
+
+    // Body raw text ke roop mein padho (JSON ho ya na ho, dono case handle)
+    let bodyText = "";
     try {
-      payload = await request.json();
+      bodyText = await request.text();
     } catch {
-      payload = null;
+      bodyText = "(body read failed)";
     }
 
-    // Debug ke liye — jo bhi data aaya, uska JSON seedha Telegram par bhej do
-    const debugText = `PE-INDEX (webhook):\n${JSON.stringify(payload)}`;
-    ctx.waitUntil(sendTelegramMessage(env, debugText));
+    const debugText =
+      `PE-INDEX (webhook debug)\n\n` +
+      `— HEADERS —\n${JSON.stringify(headersObj, null, 2)}\n\n` +
+      `— BODY —\n${bodyText}`;
 
-    // Telegram ko turant OK
+    // 4096 char Telegram limit ke andar rakhne ke liye truncate karo
+    const safeText = debugText.length > 4000 ? debugText.slice(0, 4000) + "\n...(truncated)" : debugText;
+
+    ctx.waitUntil(sendTelegramMessage(env, safeText));
+
     return new Response("OK", { status: 200 });
-  },
-
-  // ------------------------------------------------------
-  // 🔹 2) Cron trigger — STUB (deploy ke liye zaroori, jaan-bujh
-  //    kar rakha gaya hai)
-  // ------------------------------------------------------
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    console.log("PE-INDEX: cron triggered (stub, no-op)");
-  },
-
-  // ------------------------------------------------------
-  // 🔹 3) Queue consumer — STUB (wrangler.toml mein bound hai,
-  //    isliye handler zaroori hai warna deploy fail hota hai).
-  // ------------------------------------------------------
-  async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
-    for (const msg of batch.messages) {
-      console.log(`PE-QUEUE[${batch.queue}]: received`, msg.body);
-      msg.ack();
-    }
   },
 };
