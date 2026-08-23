@@ -1,14 +1,17 @@
 /**
  * ============================================================
  *  POCKET EMPIRE — MAIN ENTRY (index.ts)
- *  Version : 0.0.6  (TEMP DEBUG — headers + body dono bhej raha)
+ *  Version : 0.0.7  (TEMP DEBUG — headers + body Telegram ko;
+ *                    queue() stub wapas add kiya, warna deploy
+ *                    fail hota hai — "Queue handler is missing")
  *
  *  Status: TEMPORARY testing version. Sirf ye dekhne ke liye ki
  *  webhook se HTTP headers aur body dono kaise/kya aa rahe hain.
  *
- *  Baaki sab hata diya gaya hai — koi dispatcher, koi cron logic,
- *  kuch nahi. Sirf webhook aata hai → uske headers + body ko
- *  Telegram par bhej deta hai.
+ *  Dispatcher, cron logic — sab hataya hua hai jaisa tha.
+ *  Sirf queue() stub wapas rakha hai kyunki wrangler.toml mein
+ *  PE_REPORTER / PE_COLLECTOR / PE_PROCESSOR / PE_PUBLISHER
+ *  queues bound hain — inke bina deploy hi fail ho jaata hai.
  * ============================================================
  */
 
@@ -70,5 +73,16 @@ export default {
     ctx.waitUntil(sendTelegramMessage(env, safeText));
 
     return new Response("OK", { status: 200 });
+  },
+
+  // ------------------------------------------------------
+  // 🔹 Queue consumer — STUB (zaroori hai, warna deploy fail
+  //    hota hai kyunki queues wrangler.toml mein bound hain)
+  // ------------------------------------------------------
+  async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
+    for (const msg of batch.messages) {
+      console.log(`PE-QUEUE[${batch.queue}]: received`, msg.body);
+      msg.ack();
+    }
   },
 };
