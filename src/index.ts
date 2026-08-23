@@ -1,27 +1,30 @@
 /**
  * ============================================================
  *  POCKET EMPIRE — MAIN ENTRY (index.ts)
- *  Version : 0.0.4
+ *  Version : 0.0.5  (TEMP DEBUG — dispatcher hataya gaya)
  *
- *  Role:
- *    1) Telegram Webhook se message aaye → turant 200 OK do
- *       (Telegram retry loop se bachne ke liye)
- *    2) Dispatcher ko call karne se PEHLE, khud hi seedha
- *       Telegram API par ek message bhej do (env se
- *       TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID uthakar)
- *    3) Fir us message ko background mein (waitUntil)
- *       dispatcher.ts ko pass kar do
- *    4) Cron trigger chale to bhi wahi ek dispatcher ko call karo
+ *  Status: Ye TEMPORARY testing version hai. Sirf ye check karne
+ *  ke liye ki Telegram webhook se data kaise aa raha hai.
  *
- *  NOTE: Pehle rule tha ki index.ts ke andar koi logging/reporting
- *  nahi hoga — ab explicitly requested feature ke wajah se ek
- *  direct Telegram send yahan add kiya gaya hai. Baaki poora
- *  logging + reporting ka kaam ab bhi dispatcher.ts + reporter.ts
- *  ke andar hi hota hai.
+ *  Dispatcher.ts (aur uske through jo bhi reporter.ts / aage
+ *  call hote the) — SAB HATA DIYA GAYA HAI. Ab ye file khud hi
+ *  standalone hai, kisi aur file ko call/import nahi karti.
+ *
+ *  Kya bacha hai:
+ *    1) fetch()      → Webhook se data aata hai, turant 200 OK,
+ *                       aur khud hi seedha Telegram ko message
+ *                       bhej deta hai (debug ke liye).
+ *    2) scheduled()  → Cron handler — ye jaan-bujh kar rakha gaya
+ *                       hai. wrangler.toml mein cron trigger bound
+ *                       hai, isliye agar ye handler na ho to
+ *                       deploy hi FAIL ho jaata hai (pehle bhi
+ *                       aisa dekha gaya tha). Abhi iske andar
+ *                       koi logic nahi, bas stub hai.
+ *    3) queue()      → Queue consumer stub — wrangler.toml mein
+ *                       bound hai isliye zaroori hai, warna deploy
+ *                       fail hoga. Abhi sirf ack() kar raha hai.
  * ============================================================
  */
-
-import { dispatch } from "./dispatcher";
 
 export interface Env {
   TELEGRAM_BOT_TOKEN?: string;
@@ -72,54 +75,25 @@ export default {
       payload = null;
     }
 
-    // Env se Telegram credentials nikal ke full JSON banao
-    const fullData = {
-      source: "webhook",
-      payload,
-      telegram: {
-        botToken: env.TELEGRAM_BOT_TOKEN ?? null,
-        chatId: env.TELEGRAM_CHAT_ID ?? null,
-      },
-      env,
-      ctx,
-    };
+    // Debug ke liye — jo bhi data aaya, uska JSON seedha Telegram par bhej do
+    const debugText = `PE-INDEX (webhook):\n${JSON.stringify(payload)}`;
+    ctx.waitUntil(sendTelegramMessage(env, debugText));
 
-    // Dispatcher ko chhodane se PEHLE, khud hi Telegram par message bhej do
-    ctx.waitUntil(sendTelegramMessage(env, "PE-INDEX: Webhook received ✅"));
-
-    // Message ko background mein dispatcher ko de do, wait mat karo
-    ctx.waitUntil(dispatch(fullData));
-
-    // Telegram ko turant OK — asli kaam background mein chalega
+    // Telegram ko turant OK
     return new Response("OK", { status: 200 });
   },
 
   // ------------------------------------------------------
-  // 🔹 2) Cron trigger — usi dispatcher ko call karega
+  // 🔹 2) Cron trigger — STUB (deploy ke liye zaroori, jaan-bujh
+  //    kar rakha gaya hai)
   // ------------------------------------------------------
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    const fullData = {
-      source: "cron",
-      payload: event,
-      telegram: {
-        botToken: env.TELEGRAM_BOT_TOKEN ?? null,
-        chatId: env.TELEGRAM_CHAT_ID ?? null,
-      },
-      env,
-      ctx,
-    };
-
-    // Dispatcher ko chhodane se PEHLE, khud hi Telegram par message bhej do
-    ctx.waitUntil(sendTelegramMessage(env, "PE-INDEX: Cron triggered ✅"));
-
-    ctx.waitUntil(dispatch(fullData));
+    console.log("PE-INDEX: cron triggered (stub, no-op)");
   },
 
   // ------------------------------------------------------
   // 🔹 3) Queue consumer — STUB (wrangler.toml mein bound hai,
   //    isliye handler zaroori hai warna deploy fail hota hai).
-  //    Real queue processing logic FUTURE mein yahan/dispatcher
-  //    mein add hoga.
   // ------------------------------------------------------
   async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
     for (const msg of batch.messages) {
