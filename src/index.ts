@@ -1,19 +1,31 @@
 /**
  * ============================================================
  *  POCKET EMPIRE — MAIN ENTRY (index.ts)
- *  Version : 0.0.7  (TEMP DEBUG — headers + body Telegram ko;
- *                    queue() stub wapas add kiya, warna deploy
- *                    fail hota hai — "Queue handler is missing")
+ *  Version : 0.0.8
  *
- *  Status: TEMPORARY testing version. Sirf ye dekhne ke liye ki
- *  webhook se HTTP headers aur body dono kaise/kya aa rahe hain.
+ *  Role (sirf traffic director — koi over-engineering nahi):
+ *    1) fetch()      → Webhook se URL/command/data aata hai.
+ *                       Isko dispatcher ko pass kar do, aur
+ *                       turant 200 OK return kar do. Bas.
+ *                       (Telegram ko yahan se koi seedha message
+ *                       nahi jaata — hum abhi webhook connect
+ *                       nahi kar rahe, isliye koi extra logic
+ *                       yahan nahi chahiye.)
+ *    2) scheduled()  → Cron receive karta hai. Abhi ke liye
+ *                       sirf stub — koi logic nahi.
+ *    3) queue()      → Queue messages receive karta hai. Abhi ke
+ *                       liye sirf stub — koi logic nahi
+ *                       (wrangler.toml mein bound hai, isliye
+ *                       handler zaroori hai warna deploy fail
+ *                       hota hai — code 11001).
  *
- *  Dispatcher, cron logic — sab hataya hua hai jaisa tha.
- *  Sirf queue() stub wapas rakha hai kyunki wrangler.toml mein
- *  PE_REPORTER / PE_COLLECTOR / PE_PROCESSOR / PE_PUBLISHER
- *  queues bound hain — inke bina deploy hi fail ho jaata hai.
+ *  RULE: Is file ke andar khud koi function/logic nahi banana.
+ *  Data passing ka structure yahan rakha hai kyunki aage aur
+ *  code (dispatcher ke andar) isi par build hoga.
  * ============================================================
  */
+
+import { dispatch } from "./dispatcher";
 
 export interface Env {
   TELEGRAM_BOT_TOKEN?: string;
@@ -45,44 +57,46 @@ async function sendTelegramMessage(env: Env, text: string): Promise<void> {
 
 export default {
   // ------------------------------------------------------
-  // 🔹 Telegram Webhook entry (HTTP POST) — DEBUG ONLY
+  // 🔹 1) Webhook entry (HTTP POST) — URL/command/data receive
   // ------------------------------------------------------
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    // Headers ko object mein collect karo
-    const headersObj: Record<string, string> = {};
-    request.headers.forEach((value, key) => {
-      headersObj[key] = value;
-    });
+    const headers: Record<string, string> = {};
+    request.headers.forEach((value, key) => { headers[key] = value; });
 
-    // Body raw text ke roop mein padho (JSON ho ya na ho, dono case handle)
-    let bodyText = "";
-    try {
-      bodyText = await request.text();
-    } catch {
-      bodyText = "(body read failed)";
-    }
+    const body = await request.text().catch(() => "");
 
-    const debugText =
-      `PE-INDEX (webhook debug)\n\n` +
-      `— HEADERS —\n${JSON.stringify(headersObj, null, 2)}\n\n` +
-      `— BODY —\n${bodyText}`;
+    let payload: unknown = null;
+    try { payload = JSON.parse(body); } catch { payload = body; }
 
-    // 4096 char Telegram limit ke andar rakhne ke liye truncate karo
-    const safeText = debugText.length > 4000 ? debugText.slice(0, 4000) + "\n...(truncated)" : debugText;
-
-    ctx.waitUntil(sendTelegramMessage(env, safeText));
+    ctx.waitUntil(dispatch({ source: "webhook", headers, body, payload, env, ctx }));
 
     return new Response("OK", { status: 200 });
   },
 
   // ------------------------------------------------------
-  // 🔹 Queue consumer — STUB (zaroori hai, warna deploy fail
-  //    hota hai kyunki queues wrangler.toml mein bound hain)
+  // 🔹 2) Cron trigger — STUB, koi logic nahi
+  // ------------------------------------------------------
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {},
+
+  // ------------------------------------------------------
+  // 🔹 3) Queue consumer — STUB, koi logic nahi
+  //    (wrangler.toml mein bound hai isliye handler zaroori hai
+  //    warna deploy fail hota hai — code 11001)
   // ------------------------------------------------------
   async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
     for (const msg of batch.messages) {
-      console.log(`PE-QUEUE[${batch.queue}]: received`, msg.body);
       msg.ack();
     }
   },
 };
+    await dispatch({ source: "webhook", payload, env, ctx });
+
+    const data = { file: "index.ts", source: "webhook", payload };
+    console.log("PE-INDEX:", JSON.stringify(data));
+    await report(env, JSON.stringify(data, null, 2));
+  } catch (err) {
+    const data = { file: "index.ts", source: "webhook", error: String(err) };
+    console.error("PE-INDEX-ERROR:", JSON.stringify(data));
+    await report(env, JSON.stringify(data, null, 2));
+  }
+}
