@@ -1,23 +1,31 @@
 /**
  * ============================================================
  *  POCKET EMPIRE — MAIN ENTRY (index.ts)
- *  Version : 0.0.3
+ *  Version : 0.0.8
  *
- *  Role (sirf 3 kaam, aur kuch NAHI):
- *    1) Telegram Webhook se message aaye → turant 200 OK do
- *       (Telegram retry loop se bachne ke liye)
- *    2) Us message ko background mein (waitUntil) dispatcher.ts
- *       ko pass kar do
- *    3) Cron trigger chale to bhi wahi ek dispatcher ko call karo
+ *  Role (sirf traffic director — koi over-engineering nahi):
+ *    1) fetch()      → Webhook se URL/command/data aata hai.
+ *                       Isko dispatcher ko pass kar do, aur
+ *                       turant 200 OK return kar do. Bas.
+ *                       (Telegram ko yahan se koi seedha message
+ *                       nahi jaata — hum abhi webhook connect
+ *                       nahi kar rahe, isliye koi extra logic
+ *                       yahan nahi chahiye.)
+ *    2) scheduled()  → Cron receive karta hai. Abhi ke liye
+ *                       sirf stub — koi logic nahi.
+ *    3) queue()      → Queue messages receive karta hai. Abhi ke
+ *                       liye sirf stub — koi logic nahi
+ *                       (wrangler.toml mein bound hai, isliye
+ *                       handler zaroori hai warna deploy fail
+ *                       hota hai — code 11001).
  *
- *  RULE: Is file ke andar Telegram ko seedha koi message NAHI
- *  jaayega. Sending/reporting ka kaam sirf dispatcher.ts +
- *  reporter.ts karte hain. index.ts sirf "traffic director" hai.
+ *  RULE: Is file ke andar khud koi function/logic nahi banana.
+ *  Data passing ka structure yahan rakha hai kyunki aage aur
+ *  code (dispatcher ke andar) isi par build hoga.
  * ============================================================
  */
 
 import { dispatch } from "./dispatcher";
-import { report } from "./reporter";
 
 export interface Env {
   TELEGRAM_BOT_TOKEN?: string;
@@ -35,50 +43,38 @@ export interface Env {
 
 export default {
   // ------------------------------------------------------
-  // 🔹 1) Telegram Webhook entry (HTTP POST)
+  // 🔹 1) Webhook entry (HTTP POST) — URL/command/data receive
   // ------------------------------------------------------
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const headers: Record<string, string> = {};
+    request.headers.forEach((value, key) => { headers[key] = value; });
+
+    const body = await request.text().catch(() => "");
+
     let payload: unknown = null;
-    try {
-      payload = await request.json();
-    } catch {
-      payload = null;
-    }
+    try { payload = JSON.parse(body); } catch { payload = body; }
 
-    // Background mein: dispatcher ko kaam do, phir apna status report karo
-    ctx.waitUntil(handleWebhook(payload, env, ctx));
+    ctx.waitUntil(dispatch({ source: "webhook", headers, body, payload, env, ctx }));
 
-    // Telegram ko turant OK — asli kaam background mein chalega
     return new Response("OK", { status: 200 });
   },
 
   // ------------------------------------------------------
-  // 🔹 2) Cron trigger — usi dispatcher ko call karega
+  // 🔹 2) Cron trigger — STUB, koi logic nahi
   // ------------------------------------------------------
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(dispatch({ source: "cron", payload: event, env, ctx }));
-  },
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {},
 
   // ------------------------------------------------------
-  // 🔹 3) Queue consumer — STUB (wrangler.toml mein bound hai,
-  //    isliye handler zaroori hai warna deploy fail hota hai).
-  //    Real queue processing logic FUTURE mein yahan/dispatcher
-  //    mein add hoga.
+  // 🔹 3) Queue consumer — STUB, koi logic nahi
+  //    (wrangler.toml mein bound hai isliye handler zaroori hai
+  //    warna deploy fail hota hai — code 11001)
   // ------------------------------------------------------
   async queue(batch: MessageBatch, env: Env, ctx: ExecutionContext): Promise<void> {
     for (const msg of batch.messages) {
-      console.log(`PE-QUEUE[${batch.queue}]: received`, msg.body);
       msg.ack();
     }
   },
 };
-
-// ========================================================
-// 🔧 Helper — dispatcher ko kaam do, phir APNA khud ka
-//    status reporter ko bolo (exact file name ke saath)
-// ========================================================
-async function handleWebhook(payload: unknown, env: Env, ctx: ExecutionContext): Promise<void> {
-  try {
     await dispatch({ source: "webhook", payload, env, ctx });
 
     const data = { file: "index.ts", source: "webhook", payload };
