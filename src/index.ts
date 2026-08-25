@@ -30,29 +30,15 @@ import { dispatch } from "./dispatcher";
 export interface Env {
   TELEGRAM_BOT_TOKEN?: string;
   TELEGRAM_CHAT_ID?: string;
-}
-
-// ------------------------------------------------------
-// 🔹 Helper — seedha Telegram Bot API ko message bhejta hai
-// ------------------------------------------------------
-async function sendTelegramMessage(env: Env, text: string): Promise<void> {
-  const token = env.TELEGRAM_BOT_TOKEN;
-  const chatId = env.TELEGRAM_CHAT_ID;
-
-  if (!token || !chatId) {
-    console.log("PE-INDEX: TELEGRAM_BOT_TOKEN ya TELEGRAM_CHAT_ID missing, message skip kiya");
-    return;
-  }
-
-  try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text }),
-    });
-  } catch (err) {
-    console.log("PE-INDEX: Telegram message bhejne mein error", err);
-  }
+  // 🔽 FUTURE BINDINGS — jaise-jaise use honge, yahan declare karo
+  // DB: D1Database;
+  // AI: Ai;
+  // PE_KV: KVNamespace;
+  // PE_REPORTER: Queue;
+  // PE_COLLECTOR: Queue;
+  // PE_PROCESSOR: Queue;
+  // PE_PUBLISHER: Queue;
+  // RSS_FEED_URL: string;
 }
 
 export default {
@@ -89,14 +75,3 @@ export default {
     }
   },
 };
-    await dispatch({ source: "webhook", payload, env, ctx });
-
-    const data = { file: "index.ts", source: "webhook", payload };
-    console.log("PE-INDEX:", JSON.stringify(data));
-    await report(env, JSON.stringify(data, null, 2));
-  } catch (err) {
-    const data = { file: "index.ts", source: "webhook", error: String(err) };
-    console.error("PE-INDEX-ERROR:", JSON.stringify(data));
-    await report(env, JSON.stringify(data, null, 2));
-  }
-}
