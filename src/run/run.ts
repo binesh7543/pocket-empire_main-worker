@@ -12,7 +12,7 @@
  * ============================================================
  */
 
-import type { Env } from "./index";
+import type { Env } from "../index";
 
 // ------------------------------------------------------
 // 🔹 Helper — seedha Telegram Bot API ko message bhejta hai
