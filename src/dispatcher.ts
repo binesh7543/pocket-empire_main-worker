@@ -18,7 +18,7 @@
  */
 
 import type { Env } from "./index";
-import { run } from "./run";
+import { run } from "./run/run";
 
 interface DispatchInput {
   source: string;
