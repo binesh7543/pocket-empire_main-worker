@@ -1,22 +1,8 @@
-/**
- * ============================================================
- *  POCKET EMPIRE — RUN HANDLER (run.ts)
- *  Version : 0.0.1
- *
- *  Role (abhi ke liye sirf ek hi kaam):
- *    dispatcher.ts se "run" command match hone ke baad jo
- *    message mila, usko Telegram par report kar do.
- *
- *  Aage jaake yahan actual "run" logic add hoga — abhi ke liye
- *  koi processing nahi, sirf confirmation report.
- * ============================================================
- */
-
 import type { Env } from "../index";
 
-// ------------------------------------------------------
-// 🔹 Helper — seedha Telegram Bot API ko message bhejta hai
-// ------------------------------------------------------
+const LANG = "hinglish";
+const TG_LIMIT = 4000;
+
 async function sendTelegramMessage(env: Env, text: string): Promise<void> {
   const token = env.TELEGRAM_BOT_TOKEN;
   const chatId = env.TELEGRAM_CHAT_ID;
@@ -30,10 +16,33 @@ async function sendTelegramMessage(env: Env, text: string): Promise<void> {
     await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text }),
+      body: JSON.stringify({ chat_id: chatId, text: text.slice(0, TG_LIMIT) }),
     });
   } catch (err) {
     console.log("PE-RUN: Telegram message bhejne mein error", err);
+  }
+}
+
+async function fetchPythonData(env: Env): Promise<string> {
+  const url = `${env.PYTHON_API_URL}/make-question?lang=${LANG}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    const body = await res.text();
+    if (!res.ok) {
+      return `❌ Python API error\nStatus: ${res.status}\n\n${body}`;
+    }
+    try {
+      return JSON.stringify(JSON.parse(body), null, 2);
+    } catch {
+      return body;
+    }
+  } catch (err) {
+    return `❌ Python API fetch failed\n${String(err)}`;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -41,5 +50,14 @@ export async function run(message: string, env: Env, ctx: ExecutionContext): Pro
   console.log("PE-RUN: command received", message);
 
   await sendTelegramMessage(env, `✅ RUN command received\n\n"${message}"`);
-}
 
+  if (!env.PYTHON_API_URL) {
+    await sendTelegramMessage(env, "❌ PYTHON_API_URL missing in env");
+    return;
+  }
+
+  const data = await fetchPythonData(env);
+  console.log("PE-RUN: python data received");
+
+  await sendTelegramMessage(env, `📦 Python data (${LANG}):\n\n${data}`);
+}
